@@ -1,0 +1,80 @@
+let Parser = @import("Parser.line");
+
+extern fun printf(format: *u8, param values: [any]);
+
+fun main() : void {
+	// Parser(return_type_builder)
+	let parser = Parser(i32).init();
+
+	parser.addGrammar(
+		"num",
+		Grammar.new(Pattern.Regex("r[0-9]+"), (ctx) -> { // builder  return i32
+			return 0;
+		})
+	);
+
+	parser.addGrammar(
+		"Term",
+		Grammar.new(
+			Pattern.Or([
+				Pattern.Match("Num"),
+				Pattern.Sequence([
+					Pattern.Text("("),
+					Pattern.Match("Expr"),
+					Pattern.Text(")"),
+				])
+			]),
+			(ctx) -> { // builder return i32
+				return 0;
+			}
+		)
+	);
+
+	parser.addGrammar(
+		"Factor",
+		Grammar.new(
+			Pattern.Or([
+				Pattern.Sequence([
+					Pattern.Match("Factor"),
+					Pattern.Text("*"),
+					Pattern.Match("Term"),
+				]),
+				Pattern.Sequence([
+					Pattern.Match("Factor"),
+					Pattern.Text("/"),
+					Pattern.Match("Term"),
+				]),
+				Pattern.Match("Term"),
+			]),
+			(ctx) -> { // Builder return i32
+				return 0;
+			}
+		)
+	);
+
+	parser.addGrammar(
+		"Expr",
+		Grammar.new(
+			Pattern.Or([
+				Pattern.Sequence([
+					Pattern.Match("Expr"),
+					Pattern.Text("+"),
+					Pattern.Match("Factor"),
+				]),
+				Pattern.Sequence([
+					Pattern.Match("Expr"),
+					Pattern.Text("-"),
+					Pattern.Match("Factor"),
+				]),
+				Pattern.Match("Factor"),
+			]),
+			(ctx) -> { // builder return i32
+				return 0;
+			}
+		)
+	);
+
+	let input = "2 + 3 * 4";
+	let output = parser.apply("Expr", input);
+	printf("Hello World");
+}
