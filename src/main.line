@@ -1,0 +1,50 @@
+/////////////////////////////////////
+// STANDARD EXTERN                 //
+/////////////////////////////////////
+
+// Standard I/O functions
+pub extern fun printf(format: *u8, param values: [any]);
+pub extern fun scanf(format: *u8, param values: [any]);
+
+// Memory management functions
+pub extern fun malloca(size: u32);
+pub extern fun callloc(count: u32, size: u32);
+pub extern fun realloc(ptr: *void, size: u32);
+pub extern fun free(ptr: *void);
+
+// Memory functions
+pub extern fun memcpy(dest: *void, src: *void, n: u32);
+pub extern fun memmove(dest: *void, src: *void, n: u32);
+pub extern fun memset(ptr: *void, value: i32, n: u32);
+pub extern fun memcmp(ptr1: *void, ptr2: *void, n: u32);
+
+// String functions
+pub extern fun strlen(str: *u8);
+pub extern fun strcpy(dest: *u8, src: *u8);
+pub extern fun strcmp(str1: *u8, str2: *u8);
+
+/////////////////////////////////////
+//  LEXER                          //
+/////////////////////////////////////
+
+// Token kinds 
+let TOKEN_IDENTIFIER: comptime i32	= 1;
+let TOKEN_INTEGER: comptime i32			= 2;
+let TOKEN_KEYWORD: comptime i32			= 3;
+let TOKEN_SYMBOL: comptime i32			= 4;
+
+let Token = object {
+	pub kind: u32,
+	pub text: *u8
+}
+
+fun make_token(kind: u32, text: *u8) : Token {
+	return Token { kind, text };
+}
+
+fun main() : i32 {
+	let t = make_token(1, "identifier");
+	printf("Token: kind=%d, text=%s\n", t.kind, t.text);
+
+	return 0;
+}
