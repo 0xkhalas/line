@@ -2,12 +2,16 @@
 
 all: build run clean
 
+ir:
+	@../../target/release/nest ir src/main.line
+
 build:
-	@./bin/nest compile src/main.line
-	@cc main.o -o ./bin/line
+	@../../target/release/nest compile src/main.line
+	@cc main.o -o line.tmp
 
 run:
-	@./bin/line
+	@./line.tmp
 
 clean:
 	@rm main.o
+	@rm line.tmp
