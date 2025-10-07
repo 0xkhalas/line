@@ -332,10 +332,7 @@ fun main() : i32 {
 
 	while !lex_eof(&lex) {
 		let token: Token = lex_next(&lex);
-		defer {
-			printf("Freeing token...\n");
-			free(token.src);
-		}
+		defer free(token.src);
 
 		printf("Token: '%s' '%s'\n", @enumStr(TokenKind, token.kind), token.src);
 		if token.kind == TokenKind.EndOfFile {
