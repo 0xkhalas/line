@@ -1,9 +1,6 @@
-let Parser = @import("Parser.line");
-
 extern fun printf(format: *u8, param values: [any]);
 
 fun main() : void {
-	// Parser(return_type_builder)
 	let parser = Parser(i32).init();
 
 	parser.addGrammar(
