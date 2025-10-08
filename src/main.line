@@ -30,11 +30,16 @@ pub extern fun strcmp(str1: *u8, str2: *u8) : i32;
 pub extern fun strcat(dest: *u8, src: *u8) : *u8;
 pub extern fun strncpy(dest: *u8, src: *u8, n: u32) : *u8;
 
+// System functions
+pub extern fun exit(status: i32) : void;
+pub extern fun getenv(name: *u8) : *u8;
+pub extern fun system(command: *u8) : i32;
+
 // ============================================================================
 // GENERIC DYNAMIC LIST (VECTOR)
 // ============================================================================
 
-let List = object {
+const List = struct {
 	data: *u8,
 	len: u32,
 	cap: u32,
@@ -61,6 +66,41 @@ fun list_push(arr: *List, value: *void) {
 	arr.*.len = arr.*.len + 1;
 }
 
+fun list_get(arr: *List, index: u32) : *void {
+	if index >= arr.*.len {
+		return 0 as *void;
+	} else if index < 0 {
+		return 0 as *void;
+	}
+
+	return (arr.*.data + index * arr.*.elem_size) as *void;
+}
+
+fun list_set(arr: *List, index: u32, value: *void) {
+	if index >= arr.*.len {
+		return;
+	} else if index < 0 {
+		return;
+	}
+
+	let dest: *u8 = arr.*.data + index * arr.*.elem_size;
+	memcpy(dest as *void, value, arr.*.elem_size);
+}
+
+fun list_pop(arr: *List) : *void {
+	if arr.*.len == 0 {
+		return 0 as *void;
+	}
+
+	arr.*.len = arr.*.len - 1;
+	let value: *void = arr.*.data + arr.*.len * arr.*.elem_size;
+	return value;
+}
+
+fun list_size(arr: *List) : u32 {
+	return arr.*.len;
+}
+
 fun list_free(arr: *List) {
 	free(arr.*.data);
 	arr.*.data = 0;
@@ -77,7 +117,7 @@ fun read_file_all(path: *u8) : *u8 {
 	let file: *void = fopen(path, "rb");
 	if (file as i32 == 0) {
 		printf("Failed to open file: %s\n", path);
-		return 0 as *u8;
+		exit(1);
 	}
 
 	fseek(file, 0, 2);
@@ -88,7 +128,7 @@ fun read_file_all(path: *u8) : *u8 {
 	if (buf as i32 == 0) {
 		printf("Failed to allocate memory for file\n");
 		fclose(file);
-		return 0 as *u8;
+		exit(1);
 	}
 
 	let read_size: i32 = fread(buf, 1, size, file);
@@ -101,12 +141,17 @@ fun read_file_all(path: *u8) : *u8 {
 // LEXER
 // ============================================================================
 
-let Location = object {
+const SpanSource = struct {
+	start: i32,
+	end: i32,
+}
+
+const Location = struct {
 	idx: i32,
 	line: i32,
 }
 
-let TokenKind = enum {
+const TokenKind = enum {
 	Identifier,
 	Integer,
 	Float,
@@ -117,13 +162,13 @@ let TokenKind = enum {
 	EndOfFile,
 }
 
-let Token = object {
+const Token = struct {
 	kind: TokenKind,
-	src: *u8,
+	span: SpanSource,
 	loc: Location,
 }
 
-let LexState = object {
+const LexState = struct {
 	src: *u8,
 	src_len: i32,
 	pos: i32,
@@ -139,9 +184,30 @@ fun is_digit(c: u8) : bool {
 }
 
 fun is_keyword(str: *u8) : bool {
-	if strcmp(str, "fun") == 0 { return true; }
-	else if strcmp(str, "let") == 0 { return true; }
+	if strcmp(str, "pub") == 0 { return true; }
+	else if strcmp(str, "left") == 0 { return true; }
+	else if strcmp(str, "fun") == 0 { return true; }
+	else if strcmp(str, "return") == 0 { return true; }
+	else if strcmp(str, "if") == 0 { return true; }
+	else if strcmp(str, "else") == 0 { return true; }
+	else if strcmp(str, "match") == 0 { return true; }
+	else if strcmp(str, "for") == 0 { return true; }
+	else if strcmp(str, "while") == 0 { return true; }
+	else if strcmp(str, "in") == 0 { return true; }
+	else if strcmp(str, "defer") == 0 { return true; }
+	else if strcmp(str, "continue") == 0 { return true; }
+	else if strcmp(str, "break") == 0 { return true; }
+	else if strcmp(str, "void") == 0 { return true; }
+	else if strcmp(str, "bool") == 0 { return true; }
+	else if strcmp(str, "comp") == 0 { return true; }
 	else if strcmp(str, "extern") == 0 { return true; }
+	else if strcmp(str, "struct") == 0 { return true; }
+	else if strcmp(str, "enum") == 0 { return true; }
+	else if strcmp(str, "union") == 0 { return true; }
+	else if strcmp(str, "true") == 0 { return true; }
+	else if strcmp(str, "false") == 0 { return true; }
+	else if strcmp(str, "any") == 0 { return true; }
+	else if strcmp(str, "as") == 0 { return true; }
 	else { return false; }
 }
 
@@ -154,16 +220,72 @@ fun lex_init(src: *u8) : LexState {
 	return state;
 }
 
+fun lex_init_span_source(start: i32, end: i32) : SpanSource {
+	let s: SpanSource = .{};
+	s.start = start;
+	s.end = end;
+	return s;
+}
+
 fun lex_eof(state: *LexState) : bool {
 	return state.*.pos >= state.*.src_len;
 }
 
-fun lex_init_token(state: *LexState, kind: TokenKind, src: *u8) : Token {
+fun lex_init_token(state: *LexState, kind: TokenKind, start: i32, end: i32) : Token {
 	let t: Token = .{};
 	t.kind = kind;
-	t.src = src;
+	t.span = lex_init_span_source(start, end);
 	t.loc = state.*.loc;
 	return t;
+}
+
+fun lex_span_source(state: *LexState, src: SpanSource, handle_escapes: bool) : *u8 {
+	let len: i32 = src.end - src.start;
+	let text: *u8 = malloc(len + 1) as *u8;
+
+	if handle_escapes {
+		let read_pos: i32 = 0;
+		let write_pos: i32 = 0;
+
+		while read_pos < len {
+			let c: u8 = state.*.src[src.start + read_pos];
+
+			if c == '\\' && (read_pos + 1) < len {
+				read_pos = read_pos + 1;
+				let escape_char: u8 = state.*.src[src.start + read_pos];
+
+				if escape_char == 'n' {
+					text[write_pos] = '\n';
+				} else if escape_char == 't' {
+					text[write_pos] = '\t';
+				} else if escape_char == 'r' {
+					text[write_pos] = '\r';
+				} else if escape_char == '\\' {
+					text[write_pos] = '\\';
+				} else if escape_char == '\'' {
+					text[write_pos] = '\'';
+				} else if escape_char == '"' {
+					text[write_pos] = '"';
+				} else if escape_char == '0' {
+					text[write_pos] = '\0';
+				} else {
+					text[write_pos] = escape_char;
+				}
+			} else {
+				text[write_pos] = c;
+			}
+
+			read_pos = read_pos + 1;
+			write_pos = write_pos + 1;
+		}
+
+		text[write_pos] = 0; // null-terminate
+	} else {
+		strncpy(text, state.*.src + src.start, len as u32);
+		text[len] = 0; // null-terminate
+	}
+
+	return text;
 }
 
 fun lex_char(state: *LexState) : u8 {
@@ -190,6 +312,7 @@ fun lex_next_char(state: *LexState) : u8 {
 
 	let c: u8 = state.*.src[state.*.pos];
 	state.*.pos = state.*.pos + 1;
+
 	return c;
 }
 
@@ -221,140 +344,80 @@ fun lex_number(state: *LexState) : Token {
 		state.*.pos = state.*.pos + 1;
 	}
 
-	let len: i32 = state.*.pos - start_pos; // calculate length
-	let text: *u8 = malloc(len + 1) as *u8; // allocate memory
-
-	strncpy(text, state.*.src + start_pos, len as u32); // copy the text to pointer
-	text[len] = 0; // null-terminate
-
-	let token: Token = lex_init_token(state, if is_float { TokenKind.Float } else { TokenKind.Integer }, text);
+	let token: Token = lex_init_token(state, if is_float { TokenKind.Float } else { TokenKind.Integer }, start_pos, state.*.pos);
 	return token;
 }
 
 fun lex_string(state: *LexState) : Token {
-	lex_next_char(state); // skip opening quote
+	lex_next_char(state);
 	let start_pos: i32 = state.*.pos;
-	let text: *u8 = malloc(256) as *u8;
-	let text_pos: i32 = 0;
-	
-	while !lex_eof(state) && lex_char(state) != '"' {
+
+	while !lex_eof(state) {
 		let c: u8 = lex_char(state);
 		
-		if c == '\\' {
-			state.*.pos = state.*.pos + 1; // skip backslash
-			if lex_eof(state) {
-				break;
-			}
-			
-			let escape_char: u8 = lex_char(state);
-			if escape_char == 'n' {
-				text[text_pos] = '\n';
-			} else if escape_char == 't' {
-				text[text_pos] = '\t';
-			} else if escape_char == 'r' {
-				text[text_pos] = '\r';
-			} else if escape_char == '\\' {
-				text[text_pos] = '\\';
-			} else if escape_char == '\'' {
-				text[text_pos] = '\'';
-			} else if escape_char == '"' {
-				text[text_pos] = '"';
-			} else if escape_char == '0' {
-				text[text_pos] = '\0';
-			} else {
-				text[text_pos] = '\\';
-				text_pos = text_pos + 1;
-				text[text_pos] = escape_char;
+		if c == '"' {
+			break;
+		} else if c == '\\' {
+			state.*.pos = state.*.pos + 1;
+
+			if !lex_eof(state) {
+				state.*.pos = state.*.pos + 1;
 			}
 		} else {
-			text[text_pos] = c;
+			state.*.pos = state.*.pos + 1;
 		}
-		
-		text_pos = text_pos + 1;
-		state.*.pos = state.*.pos + 1;
 	}
-	lex_next_char(state); // skip closing quote
 
-	text[text_pos] = 0; // null-terminate
+	let end_pos: i32 = state.*.pos;
+	lex_next_char(state);
 
-	let token: Token = lex_init_token(state, TokenKind.String, text);
-	return token;
+	return lex_init_token(state, TokenKind.String, start_pos, end_pos);
 }
 
 fun lex_character(state: *LexState) : Token {
-	lex_next_char(state); // skip opening quote
+	lex_next_char(state);
 	let start_pos: i32 = state.*.pos;
-	let text: *u8 = malloc(16) as *u8;
-	let text_pos: i32 = 0;
-	
-	while !lex_eof(state) && lex_char(state) != '\'' {
+
+	if !lex_eof(state) {
 		let c: u8 = lex_char(state);
 		
 		if c == '\\' {
-			state.*.pos = state.*.pos + 1; // skip backslash
-			if lex_eof(state) {
-				break;
-			}
-			
-			let escape_char: u8 = lex_char(state);
-			if escape_char == 'n' {
-				text[text_pos] = '\n';
-			} else if escape_char == 't' {
-				text[text_pos] = '\t';
-			} else if escape_char == 'r' {
-				text[text_pos] = '\r';
-			} else if escape_char == '\\' {
-				text[text_pos] = '\\';
-			} else if escape_char == '\'' {
-				text[text_pos] = '\'';
-			} else if escape_char == '"' {
-				text[text_pos] = '"';
-			} else if escape_char == '0' {
-				text[text_pos] = '\0';
-			} else {
-				text[text_pos] = '\\';
-				text_pos = text_pos + 1;
-				text[text_pos] = escape_char;
+			state.*.pos = state.*.pos + 1;
+
+			if !lex_eof(state) {
+				state.*.pos = state.*.pos + 1;
 			}
 		} else {
-			text[text_pos] = c;
+			state.*.pos = state.*.pos + 1;
 		}
-		
-		text_pos = text_pos + 1;
-		state.*.pos = state.*.pos + 1;
 	}
-	lex_next_char(state); // skip closing quote
 
-	text[text_pos] = 0; // null-terminate
+	let end_pos: i32 = state.*.pos;
+	lex_next_char(state);
 
-	let token: Token = lex_init_token(state, TokenKind.Char, text);
-	return token;
+	return lex_init_token(state, TokenKind.Char, start_pos, end_pos);
 }
 
 fun lex_identifier(state: *LexState) : Token {
 	let start_pos: i32 = state.*.pos;
+
 	while !lex_eof(state) && is_letter(lex_char(state)) {
 		state.*.pos = state.*.pos + 1;
 	}
 
-	let len: i32 = state.*.pos - start_pos; // calculate length
-	let text: *u8 = malloc(len + 1) as *u8; // allocate memory
+	return lex_init_token(state, TokenKind.Identifier, start_pos, state.*.pos);
+}
 
-	strncpy(text, state.*.src + start_pos, len as u32); // copy the text to pointer
-	text[len] = 0; // null-terminate
+fun lex_symbol(state: *LexState) : Token {
+	let start_pos: i32 = state.*.pos;
+	state.*.pos = state.*.pos + 1;
 
-	let token: Token = lex_init_token(state, TokenKind.Identifier, text);
-
-	if is_keyword(text) {
-		token.kind = TokenKind.Keyword;
-	}
-
-	return token;
+	return lex_init_token(state, TokenKind.Symbol, start_pos, state.*.pos);
 }
 
 fun lex_next(state: *LexState) : Token {
 	if lex_eof(state) {
-		return lex_init_token(state, TokenKind.EndOfFile, 0 as *u8);
+		return lex_init_token(state, TokenKind.EndOfFile, 0, 0);
 	}
 
 	while !lex_eof(state) {
@@ -381,16 +444,10 @@ fun lex_next(state: *LexState) : Token {
 			return lex_number(state);
 		}
 
-		// Handle symbols
-		state.*.pos = state.*.pos + 1;
-		let text: *u8 = malloc(2) as *u8;
-		strncpy(text, state.*.src + (state.*.pos - 1), 1);
-		text[1] = 0;
-
-		return lex_init_token(state, TokenKind.Symbol, text);
+		return lex_symbol(state);
 	}
 
-	return lex_init_token(state, TokenKind.EndOfFile, 0 as *u8);
+	return lex_init_token(state, TokenKind.EndOfFile, 0, 0);
 }
 
 fun lex_peek(state: *LexState, index: i32) : Token {
@@ -413,22 +470,17 @@ fun lex_peek(state: *LexState, index: i32) : Token {
 // ============================================================================
 
 fun main() : i32 {
-	let src_path: *u8 = "examples/hello-world.line";
-	let src: *u8 = read_file_all(src_path);
-
-	if (src as i32 == 0) {
-		return 1;
-	}
-
+	let src: *u8 = read_file_all("examples/hello-world.line");
 	defer free(src);
 
 	let lex: LexState = lex_init(src);
 
 	while !lex_eof(&lex) {
 		let token: Token = lex_next(&lex);
-		defer free(token.src);
+		let token_src: *u8 = lex_span_source(&lex, token.span, false);
+		defer free(token_src);
 
-		printf("Token: '%s' '%s'\n", @enumStr(TokenKind, token.kind), token.src);
+		printf("Token: '%s' '%s'\n", @enumStr(TokenKind, token.kind), token_src);
 		if token.kind == TokenKind.EndOfFile {
 			break;
 		}
