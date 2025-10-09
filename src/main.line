@@ -3,8 +3,8 @@
 // ============================================================================
 
 // Standard I/O functions
-pub extern fun printf(format: *u8, param values: [any]);
-pub extern fun scanf(format: *u8, param values: [any]);
+pub extern fun printf(format: *u8, params values: [any]);
+pub extern fun scanf(format: *u8, params values: [any]);
 pub extern fun fopen(path: *u8, mode: *u8) : *void;
 pub extern fun fclose(file: *void);
 pub extern fun fread(ptr: *void, size: u32, count: u32, file: *void) : u32;
@@ -185,8 +185,8 @@ fun is_digit(c: u8) : bool {
 
 fun is_keyword(str: *u8) : bool {
 	if strcmp(str, "pub") == 0 { return true; }
-	else if strcmp(str, "left") == 0 { return true; }
 	else if strcmp(str, "fun") == 0 { return true; }
+	else if strcmp(str, "params") == 0 { return true; }
 	else if strcmp(str, "return") == 0 { return true; }
 	else if strcmp(str, "if") == 0 { return true; }
 	else if strcmp(str, "else") == 0 { return true; }
@@ -344,8 +344,7 @@ fun lex_number(state: *LexState) : Token {
 		state.*.pos = state.*.pos + 1;
 	}
 
-	let token: Token = lex_init_token(state, if is_float { TokenKind.Float } else { TokenKind.Integer }, start_pos, state.*.pos);
-	return token;
+	return lex_init_token(state, if is_float { TokenKind.Float } else { TokenKind.Integer }, start_pos, state.*.pos);
 }
 
 fun lex_string(state: *LexState) : Token {
@@ -401,8 +400,16 @@ fun lex_character(state: *LexState) : Token {
 fun lex_identifier(state: *LexState) : Token {
 	let start_pos: i32 = state.*.pos;
 
-	while !lex_eof(state) && is_letter(lex_char(state)) {
+	while !lex_eof(state) && is_letter(lex_char(state)) || is_digit(lex_char(state)) || lex_char(state) == '_' {
 		state.*.pos = state.*.pos + 1;
+	}
+
+	let span: SpanSource = lex_init_span_source(start_pos, state.*.pos);
+	let ident_str: *u8 = lex_span_source(state, span, false);
+	defer free(ident_str);
+
+	if is_keyword(ident_str) {
+		return lex_init_token(state, TokenKind.Keyword, start_pos, state.*.pos);
 	}
 
 	return lex_init_token(state, TokenKind.Identifier, start_pos, state.*.pos);
@@ -465,26 +472,661 @@ fun lex_peek(state: *LexState, index: i32) : Token {
 	return token;
 }
 
+fun lex_string_cmp(state: *LexState, str: *u8) : bool {
+	let token: Token = lex_peek(state, 0);
+	let span_str: *u8 = lex_span_source(state, token.span, false);
+	defer free(span_str);
+
+	return strcmp(span_str, str) == 0;
+}
+
+fun lex_char_cmp(state: *LexState, char: u8) : bool {
+	let token: Token = lex_peek(state, 0);
+	let span_str: *u8 = lex_span_source(state, token.span, false);
+	let result: bool = span_str[0] == char && span_str[1] == 0;
+	defer free(span_str);
+
+	return result;
+}
+
+fun lex_print(state: *LexState, token: *Token) {
+	let token_str: *u8 = lex_span_source(state, token.*.span, false);
+	defer free(token_str);
+
+	printf("Token: kind=%s, text='%s', span=[%d-%d], loc=(%d,%d)\n", @enumStr(TokenKind, token.*.kind), token_str, token.*.span.start, token.*.span.end, token.*.loc.idx, token.*.loc.line);
+}
+
+// ============================================================================
+// AST
+// ============================================================================
+
+const ASTNodeKind = enum {
+	Program,
+	Function,
+}
+
+const ASTNode = struct {
+	kind: ASTNodeKind,
+	span: SpanSource,
+	data: *u8,
+	children: List,
+}
+
+const TypeKind = enum {
+	Integer,
+	Float,
+	Double,
+	Boolean,
+	Void,
+	Any,
+	Pointer,
+	Array,
+	Named,
+}
+
+const Type = struct {
+	kind: TypeKind,
+	data: *u8,
+}
+
+const TypeInteger = struct {
+	bits: i32,
+	is_signed: bool,
+}
+
+const TypeArray = struct {
+	base: Type,
+	size: i32,
+}
+
+const FunctionParam = struct {
+	name: SpanSource,
+	param_type: Type,
+	is_comptime: bool,
+	is_variadic: bool,
+}
+
+const FunctionData = struct {
+	name: SpanSource,
+	return_type: Type,
+	params: List,
+	is_public: bool,
+	is_external: bool,
+	is_declaration: bool,
+}
+
+// ============================================================================
+// AST HELPERS FUNCTIONS
+// ============================================================================
+
+fun ast_create_node(kind: ASTNodeKind, span: SpanSource) : *ASTNode {
+	let node: *ASTNode = malloc(@sizeOf(ASTNode)) as *ASTNode;
+	node.*.kind = kind;
+	node.*.data = 0 as *u8;
+	node.*.children = list_init(@sizeOf(*ASTNode));
+	node.*.span = span;
+	return node;
+}
+
+fun ast_add_child(parent: *ASTNode, child: *ASTNode) {
+	list_push(&parent.*.children, &child as *void);
+}
+
+fun ast_set_function_data(node: *ASTNode, name: SpanSource, return_type: Type, function_params: List, is_public: bool, is_external: bool, is_declaration: bool) {
+	let data: *FunctionData = malloc(@sizeOf(FunctionData)) as *FunctionData;
+	data.*.name = name;
+	data.*.return_type = return_type;
+	data.*.params = function_params;
+	data.*.is_external = is_external;
+	data.*.is_declaration = is_declaration;
+	data.*.is_public = is_public;
+	node.*.data = data as *u8;
+}
+
+fun ast_free_type_contents(typ: *Type) {
+	if typ as i32 == 0 {
+		return;
+	}
+
+	if typ.*.data as i32 == 0 {
+		return;
+	}
+
+	match typ.*.kind {
+		TypeKind.Pointer => {
+			let data: *Type = typ.*.data as *Type;
+			ast_free_type_contents(data);
+			free(data);
+		}
+		TypeKind.Array => {
+			let data: *TypeArray = typ.*.data as *TypeArray;
+			ast_free_type_contents(&data.*.base);
+			free(data);
+		}
+		TypeKind.Named => {
+			free(typ.*.data);
+		}
+	}
+}
+
+fun ast_free_data(node: *ASTNode) {
+	if node as i32 == 0 {
+		return;
+	}
+
+	if node.*.data as i32 == 0 {
+		return;
+	}
+
+	match node.*.kind {
+		ASTNodeKind.Function => {
+			let data: *FunctionData = node.*.data as *FunctionData;
+
+			let i: i32 = 0;
+			while i < list_size(&data.*.params) as i32 {
+				let param: *FunctionParam = list_get(&data.*.params, i) as *FunctionParam;
+				ast_free_type_contents(&param.*.param_type);
+				i = i + 1;
+			}
+
+			list_free(&data.*.params);
+			ast_free_type_contents(&data.*.return_type);
+		}
+	}
+
+	free(node.*.data);
+}
+
+fun ast_free_node(node: *ASTNode) {
+	if node as i32 == 0 {
+		return;
+	}
+
+	let i: i32 = 0;
+	while i < list_size(&node.*.children) as i32 {
+		let child: **ASTNode = list_get(&node.*.children, i) as **ASTNode;
+		ast_free_node(child.*);
+		i = i + 1;
+	}
+
+	list_free(&node.*.children);
+
+	if node.*.data as i32 != 0 {
+		ast_free_data(node);
+	}
+
+	free(node);
+}
+
+
+fun add_indent(indent: i32) {
+	let i: i32 = 0;
+	while i < indent {
+		printf("  ");
+		i = i + 1;
+	}
+}
+
+fun print_type(typ: *Type, indent: i32) {
+	if typ as i32 == 0 {
+		printf("Type: <null>\n");
+		return;
+	}
+
+	add_indent(indent);
+
+	match typ.*.kind {
+		TypeKind.Integer => {
+			let int_data: *TypeInteger = typ.*.data as *TypeInteger;
+			printf("Type: Integer (bits: %d, signed: %d)\n", int_data.*.bits, int_data.*.is_signed as i32);
+		}
+		TypeKind.Float => {
+			printf("Type: Float (f32)\n");
+		}
+		TypeKind.Double => {
+			printf("Type: Double (f64)\n");
+		}
+		TypeKind.Boolean => {
+			printf("Type: Boolean\n");
+		}
+		TypeKind.Void => {
+			printf("Type: Void\n");
+		}
+		TypeKind.Any => {
+			printf("Type: Any\n");
+		}
+		TypeKind.Pointer => {
+			printf("Type: Pointer to:\n");
+			let base: *Type = typ.*.data as *Type;
+			print_type(base, indent + 1);
+		}
+		TypeKind.Array => {
+			let arr: *TypeArray = typ.*.data as *TypeArray;
+			printf("Type: Array (size: %d) of:\n     ", arr.*.size);
+			print_type(&arr.*.base, indent + 1);
+		}
+		TypeKind.Named => {
+			printf("Type: Named (%s)\n", typ.*.data);
+		}
+	}
+}
+
+fun print_ast_node(node: *ASTNode, indent: i32) {
+	if node as i32 == 0 {
+		return;
+	}
+
+	add_indent(indent);
+
+	match node.*.kind {
+		ASTNodeKind.Program => {
+			printf("ASTNode: Program\n");
+
+			let j: i32 = 0;
+			while j < list_size(&node.*.children) as i32 {
+				let child: **ASTNode = list_get(&node.*.children, j) as **ASTNode;
+				print_ast_node(child.*, indent + 1);
+				j = j + 1;
+			}
+		}
+		ASTNodeKind.Function => {
+			let data: *FunctionData = node.*.data as *FunctionData;
+			printf("ASTNode: Function\n");
+
+			if data as i32 == 0 {
+				add_indent(indent + 1);
+				printf("<null function data>\n");
+				return;
+			}
+
+			add_indent(indent + 1);
+			printf("Name: [span %d-%d]\n", data.*.name.start, data.*.name.end);
+
+			let pub_str: *u8 = if data.*.is_public { "public" } else { "private" };
+			add_indent(indent + 1);
+			printf("Visibility: %s\n", pub_str);
+
+			let ext_str: *u8 = if data.*.is_external { "external" } else { "internal" };
+			add_indent(indent + 1);
+			printf("Linkage: %s\n", ext_str);
+
+			let decl_str: *u8 = if data.*.is_declaration { "declaration" } else { "definition" };
+			add_indent(indent + 1);
+			printf("Type: %s\n", decl_str);
+
+			add_indent(indent + 1);
+			printf("Return Type:\n");
+
+			print_type(&data.*.return_type, indent + 2);
+
+			add_indent(indent + 1);
+			printf("Params:\n");
+
+			let k: i32 = 0;
+			while k < list_size(&data.*.params) as i32 {
+				let param: *FunctionParam = list_get(&data.*.params, k) as *FunctionParam;
+				
+				add_indent(indent + 2);
+				printf("Param [span %d-%d], comptime: %d, variadic: %d\n", param.*.name.start, param.*.name.end, param.*.is_comptime as i32, param.*.is_variadic as i32);
+
+				print_type(&param.*.param_type, indent + 3);
+				k = k + 1;
+			}
+		}
+	}
+}
+
+// ============================================================================
+// PARSER
+// ============================================================================
+
+const Parser = struct {
+	lex: LexState,
+}
+
+fun parser_init(lex: LexState) : Parser {
+	let parser: Parser = .{};
+	parser.lex = lex;
+	return parser;
+}
+
+fun parse_advance(parser: *Parser) {
+	lex_next(&parser.*.lex);
+}
+
+fun parse_expect(parser: *Parser, kind: TokenKind) : bool {
+	let token: Token = lex_peek(&parser.*.lex, 0);
+	if token.kind == kind {
+		parse_advance(parser);
+		return true;
+	}
+
+	return false;
+}
+
+fun parse_expect_keyword(parser: *Parser, keyword: *u8) : bool {
+	let token: Token = lex_peek(&parser.*.lex, 0);
+	let token_str: *u8 = lex_span_source(&parser.*.lex, token.span, false);
+	defer free(token_str);
+
+	if token.kind == TokenKind.Keyword && strcmp(token_str, keyword) == 0 {
+		parse_advance(parser);
+		return true;
+	}
+
+	return false;
+}
+
+fun parse_expect_symbol(parser: *Parser, symbol: *u8) : bool {
+	let token: Token = lex_peek(&parser.*.lex, 0);
+	let token_str: *u8 = lex_span_source(&parser.*.lex, token.span, false);
+	defer free(token_str);
+
+	if token.kind == TokenKind.Symbol && strcmp(token_str, symbol) == 0 {
+		parse_advance(parser);
+		return true;
+	}
+
+	return false;
+}
+
+// ============================================================================
+// TYPE PARSING
+// ============================================================================
+
+fun parse_type(parser: *Parser) : Type {
+	let token: Token = lex_peek(&parser.*.lex, 0);
+	let token_str: *u8 = lex_span_source(&parser.*.lex, token.span, false);
+	defer free(token_str);
+
+	let typ: Type = .{};
+
+	if (token_str[0] == 'i' || token_str[0] == 'u') {
+		let is_signed: bool = (token_str[0] == 'i');
+		let idx: i32 = 1;
+		let bits: i32 = 0;
+
+		while is_digit(token_str[idx]) {
+			bits = bits * 10 + (token_str[idx] - '0') as i32;
+			idx = idx + 1;
+		}
+
+		if bits > 0 && token_str[idx] == 0 {
+			typ.kind = TypeKind.Integer;
+			typ.data = malloc(@sizeOf(TypeInteger)) as *u8;
+			let int_data: *TypeInteger = typ.data as *TypeInteger;
+			int_data.*.bits = bits;
+			int_data.*.is_signed = is_signed;
+			parse_advance(parser);
+			return typ;
+		} else {
+			typ.kind = TypeKind.Named;
+			typ.data = strcpy(malloc(strlen(token_str) + 1) as *u8, token_str) as *u8;
+			parse_advance(parser);
+			return typ;
+		}
+	} else if strcmp(token_str, "f32") == 0 {
+		typ.kind = TypeKind.Float;
+		parse_advance(parser);
+		return typ;
+	} else if strcmp(token_str, "f64") == 0 {
+		typ.kind = TypeKind.Double;
+		parse_advance(parser);
+		return typ;
+	} else if strcmp(token_str, "bool") == 0 {
+		typ.kind = TypeKind.Boolean;
+		parse_advance(parser);
+		return typ;
+	} else if strcmp(token_str, "void") == 0 {
+		typ.kind = TypeKind.Void;
+		parse_advance(parser);
+		return typ;
+	} else if strcmp(token_str, "any") == 0 {
+		typ.kind = TypeKind.Any;
+		parse_advance(parser);
+		return typ;
+	} else if strcmp(token_str, "*") == 0 {
+		parse_advance(parser);
+		typ.kind = TypeKind.Pointer;
+		typ.data = malloc(@sizeOf(Type)) as *u8;
+
+		let inner_type: Type = parse_type(parser);
+		memcpy(typ.data as *void, &inner_type, @sizeOf(Type));
+	} else if strcmp(token_str, "[") == 0 {
+		parse_advance(parser);
+		typ.kind = TypeKind.Array;
+		typ.data = malloc(@sizeOf(TypeArray)) as *u8;
+
+		let arr_data: *TypeArray = typ.data as *TypeArray;
+		arr_data.*.base = parse_type(parser);
+		arr_data.*.size = 0;
+
+		if !parse_expect_symbol(parser, "]") {
+			printf("Error: Expected ']'\n");
+			exit(1);
+		}
+	} else {
+		typ.kind = TypeKind.Named;
+		typ.data = strcpy(malloc(strlen(token_str) + 1) as *u8, token_str) as *u8;
+		parse_advance(parser);
+		return typ;
+	}
+
+	return typ;
+}
+
+// ============================================================================
+// FUNCTIONS PARSING
+// ============================================================================
+
+fun parse_param(parser: *Parser) : *FunctionParam {
+	let param: *FunctionParam = malloc(@sizeOf(FunctionParam)) as *FunctionParam;
+	param.*.is_comptime = false;
+	param.*.is_variadic = false;
+
+	{
+		let current_token: Token = lex_peek(&parser.*.lex, 0);
+		let current_token_str: *u8 = lex_span_source(&parser.*.lex, current_token.span, false);
+		defer free(current_token_str);
+
+		if current_token.kind == TokenKind.Keyword && strcmp(current_token_str, "params") == 0 {
+			param.*.is_variadic = true;
+			parse_advance(parser);
+		}
+	}
+
+	{
+		let current_token: Token = lex_peek(&parser.*.lex, 0);
+		let current_token_str: *u8 = lex_span_source(&parser.*.lex, current_token.span, false);
+		defer free(current_token_str);
+
+		if current_token.kind == TokenKind.Keyword && strcmp(current_token_str, "comptime") == 0 {
+			param.*.is_comptime = true;
+			parse_advance(parser);
+		}
+	}
+
+	let param_name_token: Token = lex_next(&parser.*.lex);
+	if param_name_token.kind != TokenKind.Identifier {
+		printf("Error: Expected parameter name identifier\n");
+		exit(0);
+	} else {
+		param.*.name = param_name_token.span;
+	}
+
+	if !parse_expect_symbol(parser, ":") {
+		printf("Error: Expected ':' after parameter name\n");
+		exit(0);
+	}
+
+	param.*.param_type = parse_type(parser);
+
+	return param;
+}
+
+fun parse_function(parser: *Parser) : *ASTNode {
+	let is_public: bool = false;
+	let is_external: bool = false;
+	let is_declaration: bool = true;
+	let parser_start_pos: i32 = parser.*.lex.pos;
+
+	{ // gets modifiers
+		let token: Token = lex_peek(&parser.*.lex, 0);
+		let token_str: *u8 = lex_span_source(&parser.*.lex, token.span, false);
+		defer free(token_str);
+
+		if token.kind == TokenKind.Keyword && strcmp(token_str, "pub") == 0 {
+			free(token_str);
+
+			is_public = true;
+			parse_advance(parser);
+
+			token = lex_peek(&parser.*.lex, 0);
+			token_str = lex_span_source(&parser.*.lex, token.span, false);
+		}
+
+		if token.kind == TokenKind.Keyword && strcmp(token_str, "extern") == 0 {
+			free(token_str);
+
+			is_external = true;
+			parse_advance(parser);
+
+			token = lex_peek(&parser.*.lex, 0);
+			token_str = lex_span_source(&parser.*.lex, token.span, false);
+		}
+	}
+
+	let node: *ASTNode = ast_create_node(ASTNodeKind.Function, lex_init_span_source(parser_start_pos, 0));
+
+	if !parse_expect_keyword(parser, "fun") {
+		printf("Error: Expected 'fun' keyword\n");
+		exit(0);
+	}
+
+	let name_token: Token = lex_next(&parser.*.lex);
+	if name_token.kind != TokenKind.Identifier {
+		printf("Error: Expected function name identifier\n");
+		exit(0);
+	}
+
+	if !parse_expect_symbol(parser, "(") {
+		printf("Error: Expected '('\n");
+		ast_free_node(node);
+		exit(0);
+	}
+
+	let params: List = list_init(@sizeOf(FunctionParam));
+
+	while !lex_char_cmp(&parser.*.lex, ')') {
+		let param: *FunctionParam = parse_param(parser);
+
+		if param as i32 == 0 {
+			printf("Error: Failed to parse parameter\n");
+			exit(0);
+		}
+
+		list_push(&params, param as *void);
+		free(param);
+
+		parse_expect_symbol(parser, ",");
+	}
+
+	if !parse_expect_symbol(parser, ")") {
+		printf("Error: Expected ')'\n");
+		ast_free_node(node);
+		list_free(&params);
+		return 0 as *ASTNode;
+	}
+
+	let return_type: Type = if parse_expect_symbol(parser, ":") {
+		parse_type(parser)
+	} else {
+		let void_type: Type = .{};
+		void_type.kind = TypeKind.Void;
+		void_type.data = 0 as *u8;
+
+		void_type
+	};
+
+	parse_expect_symbol(parser, ";");
+
+	node.*.span.end = parser.*.lex.pos;
+
+	ast_set_function_data(node, name_token.span, return_type, params, is_public, is_external, is_declaration);
+
+	return node;
+}
+
+// ============================================================================
+// TOP-LEVEL PARSING
+// ============================================================================
+
+fun parse_declaration(parser: *Parser) : *ASTNode {
+	let position: i32 = 0;
+
+	while true {
+		let token: Token = lex_peek(&parser.*.lex, position);
+		let token_str: *u8 = lex_span_source(&parser.*.lex, token.span, false);
+		defer free(token_str);
+	
+		if token.kind == TokenKind.Keyword && strcmp(token_str, "pub") == 0 {
+			position = position + 1;
+			continue;
+		}
+
+		if token.kind == TokenKind.Keyword && strcmp(token_str, "extern") == 0 {
+			position = position + 1;
+			continue;
+		}
+
+		if token.kind == TokenKind.Keyword && strcmp(token_str, "fun") == 0 {
+			return parse_function(parser);
+		}
+
+		if token.kind == TokenKind.EndOfFile {
+			break;
+		}
+
+		position = position + 1;
+	}
+
+	return 0 as *ASTNode;
+}
+
+fun parse_program(parser: *Parser) : *ASTNode {
+	let root: *ASTNode = ast_create_node(ASTNodeKind.Program, lex_init_span_source(0, 0));
+
+	while !lex_eof(&parser.*.lex) {
+		let decl: *ASTNode = parse_declaration(parser);
+
+		if decl as i32 != 0 {
+			ast_add_child(root, decl);
+		} else {
+			parse_advance(&parser);
+		}
+
+		let token: Token = lex_peek(&parser.*.lex, 0);
+		if token.kind == TokenKind.EndOfFile {
+			break;
+		}
+	}
+
+	return root;
+}
+
 // ============================================================================
 // MAIN
 // ============================================================================
 
 fun main() : i32 {
-	let src: *u8 = read_file_all("examples/hello-world.line");
+	let src: *u8 = read_file_all("examples/hello-movement.line");
 	defer free(src);
 
-	let lex: LexState = lex_init(src);
+	let parser: Parser = parser_init(lex_init(src));
+	let ast: *ASTNode = parse_program(&parser);
+	defer ast_free_node(ast);
 
-	while !lex_eof(&lex) {
-		let token: Token = lex_next(&lex);
-		let token_src: *u8 = lex_span_source(&lex, token.span, false);
-		defer free(token_src);
-
-		printf("Token: '%s' '%s'\n", @enumStr(TokenKind, token.kind), token_src);
-		if token.kind == TokenKind.EndOfFile {
-			break;
-		}
-	}
+	print_ast_node(ast, 0);
 
 	return 0;
 }
