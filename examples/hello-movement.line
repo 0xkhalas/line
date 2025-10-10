@@ -1,1 +1,0 @@
-extern fun printf(format: *u8, params values: [any]);
