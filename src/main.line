@@ -667,6 +667,10 @@ fun ast_set_binary_op_data(node: *ASTNode, operator: Operator) {
 	node.*.data = operator as *u8;
 }
 
+fun ast_set_unary_op_data(node: *ASTNode, operator: Operator) {
+	node.*.data = operator as *u8;
+}
+
 fun ast_set_literal_data(node: *ASTNode, kind: LiteralKind, value: *u8) {
 	let data: *LiteralData = malloc(@sizeOf(LiteralData)) as *LiteralData;
 	data.*.typ = kind;
@@ -747,7 +751,7 @@ fun ast_free_data(node: *ASTNode) {
 		ast_free_type_contents(typ);
 		free(typ);
 	}
-	else if node.*.kind == ASTNodeKind.Binary {
+	else if node.*.kind == ASTNodeKind.Binary || node.*.kind == ASTNodeKind.Unary {
 		return;
 	}
 	else if node.*.kind == ASTNodeKind.Access {
@@ -945,7 +949,7 @@ fun print_ast_node(lexer: *LexState, node: *ASTNode, indent: i32) {
 			return;
 		}
 
-		printf("Literal %s Value: %s\n", @enumStr(LiteralKind, data.*.typ), data.*.value);
+		printf("Literal %s Value: '%s'\n", @enumStr(LiteralKind, data.*.typ), data.*.value);
 	}
 	else if node.*.kind == ASTNodeKind.Binary {
 		let op: Operator = node.*.data as Operator;
@@ -1534,6 +1538,23 @@ fun parse_function_call(parser: *Parser, func_expr: *ASTNode) : *ASTNode {
 fun parse_factor(parser: *Parser) : *ASTNode {
 	let token: Token = lex_peek(&parser.*.lex, 0);
 
+	let opr: Operator = parse_operator(parser, false);
+	if opr != Operator.None && (opr == Operator.Not || opr == Operator.And) {
+		let start_pos: i32 = parser.*.lex.pos;
+		parse_operator(parser, true);
+		
+		let operand: *ASTNode = parse_factor(parser);
+		if operand as i32 == 0 {
+			return 0 as *ASTNode;
+		}
+		
+		let unary_node: *ASTNode = ast_create_node(ASTNodeKind.Unary, lex_init_span_source(start_pos, parser.*.lex.pos));
+		ast_set_unary_op_data(unary_node, opr);
+		ast_add_child(unary_node, operand);
+		
+		return unary_node;
+	}
+
 	if token.kind == TokenKind.Integer || token.kind == TokenKind.Float || token.kind == TokenKind.String || token.kind == TokenKind.Char || (token.kind == TokenKind.Keyword && (lex_string_cmp(&parser.*.lex, "true") || lex_string_cmp(&parser.*.lex, "false"))) {
 		return parse_literal(parser);
 	} else if token.kind == TokenKind.Identifier {
@@ -1863,7 +1884,7 @@ fun parse_program(parser: *Parser) : *ASTNode {
 // ============================================================================
 
 fun main() : i32 {
-	let src: *u8 = read_file_all("examples/test_method_calls.line");
+	let src: *u8 = read_file_all("examples/test_unray.line");
 	defer free(src);
 
 	let parser: Parser = parser_init(lex_init(src));
