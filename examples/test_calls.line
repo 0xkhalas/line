@@ -1,0 +1,5 @@
+extern fun printf(format: *u8, params values: [any]);
+
+fun test_calls() : i32 {
+	return printf("Hello") + strlen("world") + func(1, 2, 3);
+}

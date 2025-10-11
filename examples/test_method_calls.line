@@ -1,0 +1,5 @@
+extern fun printf(format: *u8, params values: [any]);
+
+fun test_method_calls() : i32 {
+	return obj.method() + arr[0].func(5) + ptr.*.call();
+}
