@@ -525,6 +525,7 @@ const ASTNodeKind = enum {
 	Unary,
 	Access,
 	FunctionCall,
+	If,
 }
 
 const ASTNode = struct {
@@ -634,6 +635,15 @@ const AccessData = struct {
 	steps: List,
 }
 
+const VariableData = struct {
+	name: SpanSource,
+	is_const: bool,
+}
+
+const IfData = struct {
+	has_else: bool,
+}
+
 // ============================================================================
 // AST HELPERS FUNCTIONS
 // ============================================================================
@@ -697,6 +707,19 @@ fun ast_set_access_data(node: *ASTNode, root: SpanSource, steps: List) {
 	node.*.data = data as *u8;
 }
 
+fun ast_set_variable_data(node: *ASTNode, name: SpanSource, is_const: bool) {
+	let data: *VariableData = malloc(@sizeOf(VariableData)) as *VariableData;
+	data.*.name = name;
+	data.*.is_const = is_const;
+	node.*.data = data as *u8;
+}
+
+fun ast_set_if_data(node: *ASTNode, has_else: bool) {
+	let data: *IfData = malloc(@sizeOf(IfData)) as *IfData;
+	data.*.has_else = has_else;
+	node.*.data = data as *u8;
+}
+
 fun ast_free_type_contents(typ: *Type) {
 	if typ as i32 == 0 {
 		return;
@@ -754,6 +777,9 @@ fun ast_free_data(node: *ASTNode) {
 		let typ: *Type = node.*.data as *Type;
 		ast_free_type_contents(typ);
 	}
+	else if node.*.kind == ASTNodeKind.Let || node.*.kind == ASTNodeKind.Const {
+		return;
+	}
 	else if node.*.kind == ASTNodeKind.Binary || node.*.kind == ASTNodeKind.Unary {
 		return;
 	}
@@ -771,6 +797,9 @@ fun ast_free_data(node: *ASTNode) {
 		}
 
 		list_free(&data.*.steps);
+	}
+	else if node.*.kind == ASTNodeKind.If {
+		return;
 	}
 
 	free(node.*.data);
@@ -941,7 +970,15 @@ fun print_ast_node(lexer: *LexState, node: *ASTNode, indent: i32) {
 	}
 	else if node.*.kind == ASTNodeKind.Let || node.*.kind == ASTNodeKind.Const {
 		let is_const: bool = node.*.kind == ASTNodeKind.Const;
-		printf("ASTNode: %s\n", if is_const { "Const" } else { "Let" });
+		let data: *VariableData = node.*.data as *VariableData;
+		
+		if data as i32 == 0 {
+			printf("ASTNode: %s <no data>\n", if is_const { "Const" } else { "Let" });
+		} else {
+			let var_name_str: *u8 = lex_span_source(lexer, data.*.name, false);
+			printf("ASTNode: %s '%s'\n", if is_const { "Const" } else { "Let" }, var_name_str);
+			free(var_name_str);
+		}
 
 		let j: i32 = 0;
 		while j < list_size(&node.*.children) as i32 {
@@ -1050,6 +1087,27 @@ fun print_ast_node(lexer: *LexState, node: *ASTNode, indent: i32) {
 			let arg: *ASTNode = list_get(&node.*.children, j) as *ASTNode;
 			print_ast_node(lexer, arg, indent + 2);
 			j = j + 1;
+		}
+	}
+	else if node.*.kind == ASTNodeKind.If {
+		let data: *IfData = node.*.data as *IfData;
+		printf("ASTNode: If (has_else: %s)\n", if data.*.has_else { "true" } else { "false" });
+		
+		add_indent(indent + 1);
+		printf("Condition:\n");
+		let condition: *ASTNode = list_get(&node.*.children, 0) as *ASTNode;
+		print_ast_node(lexer, condition, indent + 2);
+		
+		add_indent(indent + 1);
+		printf("Then:\n");
+		let then_stmt: *ASTNode = list_get(&node.*.children, 1) as *ASTNode;
+		print_ast_node(lexer, then_stmt, indent + 2);
+		
+		if data.*.has_else {
+			add_indent(indent + 1);
+			printf("Else:\n");
+			let else_stmt: *ASTNode = list_get(&node.*.children, 2) as *ASTNode;
+			print_ast_node(lexer, else_stmt, indent + 2);
 		}
 	}
 	else {
@@ -1505,6 +1563,93 @@ fun parse_access(parser: *Parser) : *ASTNode {
 	return node;
 }
 
+fun parse_if_expression(parser: *Parser) : *ASTNode {
+	let start_pos: i32 = parser.*.lex.pos;
+	
+	if !parse_expect_keyword(parser, "if") {
+		printf("Error: Expected 'if' keyword\n");
+		return 0 as *ASTNode;
+	}
+	
+	let condition: *ASTNode = parse_expression(parser, 0);
+	if condition as i32 == 0 {
+		printf("Error: Expected condition expression after 'if'\n");
+		return 0 as *ASTNode;
+	}
+	
+	if !parse_expect_symbol(parser, "{") {
+		printf("Error: Expected '{' after if condition in expression\n");
+		ast_free_node(condition);
+		return 0 as *ASTNode;
+	}
+	
+	let then_expr: *ASTNode = parse_expression(parser, 0);
+	if then_expr as i32 == 0 {
+		printf("Error: Expected expression in if then block\n");
+		ast_free_node(condition);
+		return 0 as *ASTNode;
+	}
+	
+	if !parse_expect_symbol(parser, "}") {
+		printf("Error: Expected '}' after if then expression\n");
+		ast_free_node(condition);
+		ast_free_node(then_expr);
+		return 0 as *ASTNode;
+	}
+	
+	if !parse_expect_keyword(parser, "else") {
+		printf("Error: If expressions must have else clause\n");
+		ast_free_node(condition);
+		ast_free_node(then_expr);
+		return 0 as *ASTNode;
+	}
+	
+	let else_expr: *ASTNode = 0 as *ASTNode;
+	
+	if lex_token_cmp(&parser.*.lex, TokenKind.Keyword, "if") {
+		else_expr = parse_if_expression(parser);
+	} else {
+		if !parse_expect_symbol(parser, "{") {
+			printf("Error: Expected '{' after else keyword in if expression\n");
+			ast_free_node(condition);
+			ast_free_node(then_expr);
+			return 0 as *ASTNode;
+		}
+		
+		else_expr = parse_expression(parser, 0);
+		if else_expr as i32 == 0 {
+			printf("Error: Expected expression in if else block\n");
+			ast_free_node(condition);
+			ast_free_node(then_expr);
+			return 0 as *ASTNode;
+		}
+		
+		if !parse_expect_symbol(parser, "}") {
+			printf("Error: Expected '}' after if else expression\n");
+			ast_free_node(condition);
+			ast_free_node(then_expr);
+			ast_free_node(else_expr);
+			return 0 as *ASTNode;
+		}
+	}
+	
+	if else_expr as i32 == 0 {
+		printf("Error: Expected expression in else clause\n");
+		ast_free_node(condition);
+		ast_free_node(then_expr);
+		return 0 as *ASTNode;
+	}
+	
+	let node: *ASTNode = ast_create_node(ASTNodeKind.If, lex_init_span_source(start_pos, parser.*.lex.pos));
+	ast_set_if_data(node, true);
+	
+	ast_add_child(node, condition);
+	ast_add_child(node, then_expr);
+	ast_add_child(node, else_expr);
+	
+	return node;
+}
+
 fun parse_function_call(parser: *Parser, func_expr: *ASTNode) : *ASTNode {
 	let start_pos: i32 = func_expr.*.span.start;
 	
@@ -1571,6 +1716,8 @@ fun parse_factor(parser: *Parser) : *ASTNode {
 
 	if token.kind == TokenKind.Integer || token.kind == TokenKind.Float || token.kind == TokenKind.String || token.kind == TokenKind.Char || (token.kind == TokenKind.Keyword && (lex_string_cmp(&parser.*.lex, "true") || lex_string_cmp(&parser.*.lex, "false"))) {
 		return parse_literal(parser);
+	} else if token.kind == TokenKind.Keyword && lex_string_cmp(&parser.*.lex, "if") {
+		return parse_if_expression(parser);
 	} else if token.kind == TokenKind.Identifier {
 		let access_expr: *ASTNode = parse_access(parser);
 		if access_expr as i32 == 0 {
@@ -1639,6 +1786,60 @@ fun parse_expression(parser: *Parser, limit: i32) : *ASTNode {
 // ============================================================================
 
 fun parse_statement(parser: *Parser) : *ASTNode;
+
+fun parse_if_statement(parser: *Parser) : *ASTNode {
+	let start_pos: i32 = parser.*.lex.pos;
+	
+	if !parse_expect_keyword(parser, "if") {
+		printf("Error: Expected 'if' keyword\n");
+		return 0 as *ASTNode;
+	}
+	
+	let condition: *ASTNode = parse_expression(parser, 0);
+	if condition as i32 == 0 {
+		printf("Error: Expected condition expression after 'if'\n");
+		return 0 as *ASTNode;
+	}
+	
+	let then_stmt: *ASTNode = parse_statement(parser);
+	if then_stmt as i32 == 0 {
+		printf("Error: Expected statement after if condition\n");
+		ast_free_node(condition);
+		return 0 as *ASTNode;
+	}
+	
+	let has_else: bool = false;
+	let else_stmt: *ASTNode = 0 as *ASTNode;
+	
+	if lex_token_cmp(&parser.*.lex, TokenKind.Keyword, "else") {
+		has_else = true;
+		parse_advance(parser);
+		
+		if lex_token_cmp(&parser.*.lex, TokenKind.Keyword, "if") {
+			else_stmt = parse_if_statement(parser);
+		} else {
+			else_stmt = parse_statement(parser);
+		}
+		
+		if else_stmt as i32 == 0 {
+			printf("Error: Expected statement after 'else'\n");
+			ast_free_node(condition);
+			ast_free_node(then_stmt);
+			return 0 as *ASTNode;
+		}
+	}
+	
+	let node: *ASTNode = ast_create_node(ASTNodeKind.If, lex_init_span_source(start_pos, parser.*.lex.pos));
+	ast_set_if_data(node, has_else);
+	
+	ast_add_child(node, condition);
+	ast_add_child(node, then_stmt);
+	if has_else {
+		ast_add_child(node, else_stmt);
+	}
+	
+	return node;
+}
 
 fun parse_return_statement(parser: *Parser) : *ASTNode {
 	let node: *ASTNode = ast_create_node(ASTNodeKind.Return, lex_init_span_source(parser.*.lex.pos, 0));
@@ -1713,6 +1914,8 @@ fun parse_variable_statement(parser: *Parser) : *ASTNode {
 	}
 	parse_advance(parser);
 
+	ast_set_variable_data(node, var_token.span, node_type == ASTNodeKind.Const);
+
 	if parse_expect_symbol(parser, ":") {
 		let type_node: *ASTNode = ast_create_node(ASTNodeKind.Type, lex_init_span_source(parser.*.lex.pos, 0));
 		let typ: Type = parse_type(parser);
@@ -1746,6 +1949,8 @@ fun parse_statement(parser: *Parser) : *ASTNode {
 		parse_variable_statement(parser);
 	} else if lex_token_cmp(&parser.*.lex, TokenKind.Keyword, "return") {
 		parse_return_statement(parser);
+	} else if lex_token_cmp(&parser.*.lex, TokenKind.Keyword, "if") {
+		parse_if_statement(parser);
 	} else if lex_token_cmp(&parser.*.lex, TokenKind.Symbol, "{") {
 		parse_block(parser);
 	} else {
@@ -1753,9 +1958,11 @@ fun parse_statement(parser: *Parser) : *ASTNode {
 	}
 
 	if stmt as i32 != 0 {
-		if !parse_expect_symbol(parser, ";") {
-			printf("Error: Expected ';' after expression statement\n");
-			exit(0);
+		if stmt.*.kind != ASTNodeKind.If && stmt.*.kind != ASTNodeKind.Block {
+			if !parse_expect_symbol(parser, ";") {
+				printf("Error: Expected ';' after expression statement\n");
+				exit(0);
+			}
 		}
 
 		return stmt;
@@ -1947,7 +2154,7 @@ fun parse_program(parser: *Parser) : *ASTNode {
 // ============================================================================
 
 fun main() : i32 {
-	let src: *u8 = read_file_all("examples/test_variable.line");
+	let src: *u8 = read_file_all("examples/test_else_if.line");
 	defer free(src);
 
 	let parser: Parser = parser_init(lex_init(src));

@@ -1,0 +1,16 @@
+fun test_nested_if() : i32 {
+	let x: i32 = 10;
+	let y: i32 = 5;
+	
+	if x > 0 {
+		if y > 0 {
+			printf("both positive\n");
+		} else {
+			printf("x positive, y not\n");
+		}
+	} else {
+		printf("x not positive\n");
+	}
+	
+	return 0;
+}
