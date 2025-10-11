@@ -1,0 +1,5 @@
+extern fun printf(format: *u8, params values: [any]);
+
+fun test_access() : i32 {
+	return obj.field + arr[0] + ptr.* + obj.field[5];
+}
