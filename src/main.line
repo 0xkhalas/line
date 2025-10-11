@@ -808,7 +808,7 @@ fun print_type(typ: *Type, indent: i32) {
 
 	if typ.*.kind == TypeKind.Integer {
 		let int_data: *TypeInteger = typ.*.data as *TypeInteger;
-		printf("Type: Integer (bits: %d, signed: %d)\n", int_data.*.bits, int_data.*.is_signed as i32);
+		printf("Type: Integer (bits: %d, signed: %d)\n", int_data.*.bits, int_data.*.is_signed);
 	}
 	else if typ.*.kind == TypeKind.Pointer {
 		printf("Type: Pointer to:\n");
@@ -885,7 +885,7 @@ fun print_ast_node(lexer: *LexState, node: *ASTNode, indent: i32) {
 
 			let param_name_str: *u8 = lex_span_source(lexer, param.*.name, false);
 			add_indent(indent + 2);
-			printf("Param %s, comptime: %d, variadic: %d\n", param_name_str, param.*.is_comptime as i32, param.*.is_variadic as i32);
+			printf("Param %s, comptime: %d, variadic: %d\n", param_name_str, param.*.is_comptime, param.*.is_variadic);
 			free(param_name_str);
 
 			print_type(&param.*.param_type, indent + 3);
@@ -1789,7 +1789,7 @@ fun parse_program(parser: *Parser) : *ASTNode {
 // ============================================================================
 
 fun main() : i32 {
-	let src: *u8 = read_file_all("examples/test_access.line");
+	let src: *u8 = read_file_all("examples/main.line");
 	defer free(src);
 
 	let parser: Parser = parser_init(lex_init(src));
