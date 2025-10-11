@@ -527,6 +527,7 @@ const ASTNodeKind = enum {
 	FunctionCall,
 	If,
 	While,
+	Assignment,
 }
 
 const ASTNode = struct {
@@ -597,6 +598,7 @@ const Operator = enum {
 	Shl,
 	Shr,
 	Not,
+	Assign,
 	None,
 }
 
@@ -805,6 +807,9 @@ fun ast_free_data(node: *ASTNode) {
 	else if node.*.kind == ASTNodeKind.While {
 		return;
 	}
+	else if node.*.kind == ASTNodeKind.Assignment {
+		return;
+	}
 
 	free(node.*.data);
 }
@@ -942,7 +947,7 @@ fun print_ast_node(lexer: *LexState, node: *ASTNode, indent: i32) {
 		if list_size(&node.*.children) == 0 {
 			printf("Children: <none>\n");
 		} else {
-			printf("Children %d:\n", list_size(&node.*.children));
+			printf("Children:\n");
 		}
 
 		let j: i32 = 0;
@@ -1126,6 +1131,19 @@ fun print_ast_node(lexer: *LexState, node: *ASTNode, indent: i32) {
 		printf("Body:\n");
 		let body: *ASTNode = list_get(&node.*.children, 1) as *ASTNode;
 		print_ast_node(lexer, body, indent + 2);
+	}
+	else if node.*.kind == ASTNodeKind.Assignment {
+		printf("ASTNode: Assignment\n");
+		
+		add_indent(indent + 1);
+		printf("Target:\n");
+		let target: *ASTNode = list_get(&node.*.children, 0) as *ASTNode;
+		print_ast_node(lexer, target, indent + 2);
+		
+		add_indent(indent + 1);
+		printf("Value:\n");
+		let value: *ASTNode = list_get(&node.*.children, 1) as *ASTNode;
+		print_ast_node(lexer, value, indent + 2);
 	}
 	else {
 		printf("ASTNode: Unknown kind %d\n", node.*.kind as i32);
@@ -1380,6 +1398,11 @@ fun parse_operator(parser: *Parser, consume: bool) : Operator {
 				parse_advance(parser);
 			}
 			return Operator.Not;
+		} else if first_str[0] == '=' {
+			if consume {
+				parse_advance(parser);
+			}
+			return Operator.Assign;
 		}
 	}
 
@@ -1888,6 +1911,44 @@ fun parse_while_statement(parser: *Parser) : *ASTNode {
 	return node;
 }
 
+fun parse_assignment_statement(parser: *Parser) : *ASTNode {
+	let start_pos: i32 = parser.*.lex.pos;
+	
+	let target: *ASTNode = parse_access(parser);
+	if target as i32 == 0 {
+		printf("Error: Expected variable or access expression for assignment\n");
+		return 0 as *ASTNode;
+	}
+	
+	let operator: Operator = parse_operator(parser, false);
+	if operator != Operator.Assign {
+		printf("Error: Expected '=' in assignment statement\n");
+		ast_free_node(target);
+		return 0 as *ASTNode;
+	}
+	
+	parse_operator(parser, true);
+	
+	let value: *ASTNode = parse_expression(parser, 0);
+	if value as i32 == 0 {
+		printf("Error: Expected expression after '=' in assignment\n");
+		ast_free_node(target);
+		return 0 as *ASTNode;
+	}
+	
+	let node: *ASTNode = ast_create_node(ASTNodeKind.Assignment, lex_init_span_source(start_pos, parser.*.lex.pos));
+	node.*.data = 0 as *u8;
+	
+	ast_add_child(node, target);
+	ast_add_child(node, value);
+	
+	if lex_char_cmp(&parser.*.lex, ';') {
+		parse_advance(parser);
+	}
+	
+	return node;
+}
+
 fun parse_return_statement(parser: *Parser) : *ASTNode {
 	let node: *ASTNode = ast_create_node(ASTNodeKind.Return, lex_init_span_source(parser.*.lex.pos, 0));
 
@@ -1992,6 +2053,21 @@ fun parse_variable_statement(parser: *Parser) : *ASTNode {
 }
 
 fun parse_statement(parser: *Parser) : *ASTNode {
+	if lex_kind_cmp(&parser.*.lex, TokenKind.Identifier) {
+		let saved_pos: i32 = parser.*.lex.pos;
+		
+		parse_access(parser);
+		
+		let operator: Operator = parse_operator(parser, false);
+		let is_assignment: bool = operator == Operator.Assign;
+		
+		parser.*.lex.pos = saved_pos;
+		
+		if is_assignment {
+			return parse_assignment_statement(parser);
+		}
+	}
+	
 	let stmt: *ASTNode = if lex_token_cmp(&parser.*.lex, TokenKind.Keyword, "const") || lex_token_cmp(&parser.*.lex, TokenKind.Keyword, "let") {
 		parse_variable_statement(parser);
 	} else if lex_token_cmp(&parser.*.lex, TokenKind.Keyword, "return") {
@@ -2203,7 +2279,7 @@ fun parse_program(parser: *Parser) : *ASTNode {
 // ============================================================================
 
 fun main() : i32 {
-	let src: *u8 = read_file_all("examples/test_if_expr.line");
+	let src: *u8 = read_file_all("examples/test_complex_assignment.line");
 	defer free(src);
 
 	let parser: Parser = parser_init(lex_init(src));

@@ -1,0 +1,9 @@
+fun test_simple_assignment() : i32 {
+	let x: i32 = 5;
+	let y: i32 = 0;
+	
+	y = x;
+	x = 10;
+	
+	return x + y;
+}
