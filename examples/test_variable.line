@@ -1,0 +1,12 @@
+extern fun printf(format: *u8, params values: [any]);
+
+fun main() : i32 {
+	let x: i32 = 42 + 5 * (ahmed + youesf);
+	const y: bool = false;
+
+	printf("Address of x: %p\n", &x);
+	printf("Logical NOT of y (!y): %d\n", !y);
+
+	return 0;
+}
+
