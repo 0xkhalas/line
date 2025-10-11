@@ -1,0 +1,7 @@
+let global_var: i32 = 42;
+const MAX_SIZE: i32 = 100;
+
+fun test_globals() : i32 {
+    let local_var: i32 = global_var;
+    return local_var + MAX_SIZE;
+}

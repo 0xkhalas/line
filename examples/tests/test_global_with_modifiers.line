@@ -1,0 +1,8 @@
+pub let public_var: i32 = 123;
+pub const EXTERNAL_CONST: i32 = 456;
+let normal_var: i32 = 789;
+
+fun use_globals() : i32 {
+    let sum: i32 = public_var + EXTERNAL_CONST + normal_var;
+    return sum;
+}
