@@ -519,6 +519,7 @@ const ASTNodeKind = enum {
 	Return,
 	Let,
 	Const,
+	Member,
 	Type,
 	Literal,
 	Binary,
@@ -644,6 +645,11 @@ const VariableData = struct {
 	is_const: bool,
 }
 
+const MemberData = struct {
+	name: SpanSource,
+	is_public: bool,
+}
+
 const IfData = struct {
 	has_else: bool,
 }
@@ -719,6 +725,13 @@ fun ast_set_variable_data(node: *ASTNode, name: SpanSource, is_const: bool, is_p
 	node.*.data = data as *u8;
 }
 
+fun ast_set_member_data(node: *ASTNode, name: SpanSource, is_public: bool) {
+	let data: *MemberData = malloc(@sizeOf(MemberData)) as *MemberData;
+	data.*.name = name;
+	data.*.is_public = is_public;
+	node.*.data = data as *u8;
+}
+
 fun ast_set_if_data(node: *ASTNode, has_else: bool) {
 	let data: *IfData = malloc(@sizeOf(IfData)) as *IfData;
 	data.*.has_else = has_else;
@@ -782,12 +795,6 @@ fun ast_free_data(node: *ASTNode) {
 		let typ: *Type = node.*.data as *Type;
 		ast_free_type_contents(typ);
 	}
-	else if node.*.kind == ASTNodeKind.Let || node.*.kind == ASTNodeKind.Const {
-		return;
-	}
-	else if node.*.kind == ASTNodeKind.Binary || node.*.kind == ASTNodeKind.Unary {
-		return;
-	}
 	else if node.*.kind == ASTNodeKind.Access {
 		let data: *AccessData = node.*.data as *AccessData;
 
@@ -803,13 +810,10 @@ fun ast_free_data(node: *ASTNode) {
 
 		list_free(&data.*.steps);
 	}
-	else if node.*.kind == ASTNodeKind.If {
-		return;
-	}
-	else if node.*.kind == ASTNodeKind.While {
-		return;
-	}
-	else if node.*.kind == ASTNodeKind.Assignment {
+	else if node.*.kind == ASTNodeKind.Let || node.*.kind == ASTNodeKind.Const ||
+			node.*.kind == ASTNodeKind.Binary || node.*.kind == ASTNodeKind.Unary ||
+			node.*.kind == ASTNodeKind.If || node.*.kind == ASTNodeKind.While ||
+			node.*.kind == ASTNodeKind.Assignment || node.*.kind == ASTNodeKind.Member {
 		return;
 	}
 
@@ -990,6 +994,25 @@ fun print_ast_node(lexer: *LexState, node: *ASTNode, indent: i32) {
 			let var_name_str: *u8 = lex_span_source(lexer, data.*.name, false);
 			printf("ASTNode: %s %s '%s'\n", visibility, if is_const { "Const" } else { "Let" }, var_name_str);
 			free(var_name_str);
+		}
+
+		let j: i32 = 0;
+		while j < list_size(&node.*.children) as i32 {
+			let child: *ASTNode = list_get(&node.*.children, j) as *ASTNode;
+			print_ast_node(lexer, child, indent + 1);
+			j = j + 1;
+		}
+	}
+	else if node.*.kind == ASTNodeKind.Member {
+		let data: *MemberData = node.*.data as *MemberData;
+		
+		if data as i32 == 0 {
+			printf("ASTNode: Member <no data>\n");
+		} else {
+			let visibility: *u8 = if data.*.is_public { "public" } else { "private" };
+			let member_name_str: *u8 = lex_span_source(lexer, data.*.name, false);
+			printf("ASTNode: %s Member '%s'\n", visibility, member_name_str);
+			free(member_name_str);
 		}
 
 		let j: i32 = 0;
@@ -2230,6 +2253,40 @@ fun parse_function(parser: *Parser) : *ASTNode {
 // TOP-LEVEL PARSING
 // ============================================================================
 
+fun parse_member_declaration(parser: *Parser) : *ASTNode {
+	let is_public: bool = false;
+	let parser_start_pos: i32 = parser.*.lex.pos;
+
+	if lex_token_cmp(&parser.*.lex, TokenKind.Keyword, "pub") {
+		is_public = true;
+		parse_advance(parser);
+	}
+
+	let member_name: Token = lex_next(&parser.*.lex);
+	if member_name.kind != TokenKind.Identifier {
+		printf("Error: Expected member name identifier\n");
+		exit(0);
+	}
+
+	if !parse_expect_symbol(parser, ":") {
+		printf("Error: Expected ':' after member name\n");
+		exit(0);
+	}
+
+	let member_type: Type = parse_type(parser);
+
+	let node: *ASTNode = ast_create_node(ASTNodeKind.Member, lex_init_span_source(parser_start_pos, parser.*.lex.pos));
+	ast_set_member_data(node, member_name.span, is_public);
+
+	let type_node: *ASTNode = ast_create_node(ASTNodeKind.Type, lex_init_span_source(parser.*.lex.pos, 0));
+	type_node.*.data = malloc(@sizeOf(Type)) as *u8;
+	memcpy(type_node.*.data as *void, &member_type, @sizeOf(Type));
+	type_node.*.span.end = parser.*.lex.pos;
+	ast_add_child(node, type_node);
+
+	return node;
+}
+
 fun parse_declaration(parser: *Parser) : *ASTNode {
 	let position: i32 = 0;
 
@@ -2256,6 +2313,16 @@ fun parse_declaration(parser: *Parser) : *ASTNode {
 			return parse_variable_statement(parser);
 		}
 
+		if token.kind == TokenKind.Identifier {
+			let next_token: Token = lex_peek(&parser.*.lex, position + 1);
+			let next_str: *u8 = lex_span_source(&parser.*.lex, next_token.span, false);
+			defer free(next_str);
+			
+			if next_token.kind == TokenKind.Symbol && strcmp(next_str, ":") == 0 {
+				return parse_member_declaration(parser);
+			}
+		}
+
 		if token.kind == TokenKind.EndOfFile {
 			break;
 		}
@@ -2275,8 +2342,9 @@ fun parse_program(parser: *Parser) : *ASTNode {
 		if decl as i32 != 0 {
 			ast_add_child(root, decl);
 			
-			// Consume semicolon after variable declarations
 			if lex_char_cmp(&parser.*.lex, ';') {
+				parse_advance(parser);
+			} else if lex_char_cmp(&parser.*.lex, ',') {
 				parse_advance(parser);
 			}
 		} else {
@@ -2297,7 +2365,7 @@ fun parse_program(parser: *Parser) : *ASTNode {
 // ============================================================================
 
 fun main() : i32 {
-	let src: *u8 = read_file_all("examples/test_global_with_modifiers.line");
+	let src: *u8 = read_file_all("examples/tests/test_global_with_modifiers.line");
 	defer free(src);
 
 	let parser: Parser = parser_init(lex_init(src));
