@@ -526,6 +526,7 @@ const ASTNodeKind = enum {
 	Access,
 	FunctionCall,
 	If,
+	While,
 }
 
 const ASTNode = struct {
@@ -799,6 +800,9 @@ fun ast_free_data(node: *ASTNode) {
 		list_free(&data.*.steps);
 	}
 	else if node.*.kind == ASTNodeKind.If {
+		return;
+	}
+	else if node.*.kind == ASTNodeKind.While {
 		return;
 	}
 
@@ -1109,6 +1113,19 @@ fun print_ast_node(lexer: *LexState, node: *ASTNode, indent: i32) {
 			let else_stmt: *ASTNode = list_get(&node.*.children, 2) as *ASTNode;
 			print_ast_node(lexer, else_stmt, indent + 2);
 		}
+	}
+	else if node.*.kind == ASTNodeKind.While {
+		printf("ASTNode: While\n");
+		
+		add_indent(indent + 1);
+		printf("Condition:\n");
+		let condition: *ASTNode = list_get(&node.*.children, 0) as *ASTNode;
+		print_ast_node(lexer, condition, indent + 2);
+		
+		add_indent(indent + 1);
+		printf("Body:\n");
+		let body: *ASTNode = list_get(&node.*.children, 1) as *ASTNode;
+		print_ast_node(lexer, body, indent + 2);
 	}
 	else {
 		printf("ASTNode: Unknown kind %d\n", node.*.kind as i32);
@@ -1841,6 +1858,36 @@ fun parse_if_statement(parser: *Parser) : *ASTNode {
 	return node;
 }
 
+fun parse_while_statement(parser: *Parser) : *ASTNode {
+	let start_pos: i32 = parser.*.lex.pos;
+	
+	if !parse_expect_keyword(parser, "while") {
+		printf("Error: Expected 'while' keyword\n");
+		return 0 as *ASTNode;
+	}
+	
+	let condition: *ASTNode = parse_expression(parser, 0);
+	if condition as i32 == 0 {
+		printf("Error: Expected condition expression after 'while'\n");
+		return 0 as *ASTNode;
+	}
+	
+	let body: *ASTNode = parse_statement(parser);
+	if body as i32 == 0 {
+		printf("Error: Expected statement after while condition\n");
+		ast_free_node(condition);
+		return 0 as *ASTNode;
+	}
+	
+	let node: *ASTNode = ast_create_node(ASTNodeKind.While, lex_init_span_source(start_pos, parser.*.lex.pos));
+	node.*.data = 0 as *u8;
+	
+	ast_add_child(node, condition);
+	ast_add_child(node, body);
+	
+	return node;
+}
+
 fun parse_return_statement(parser: *Parser) : *ASTNode {
 	let node: *ASTNode = ast_create_node(ASTNodeKind.Return, lex_init_span_source(parser.*.lex.pos, 0));
 
@@ -1951,6 +1998,8 @@ fun parse_statement(parser: *Parser) : *ASTNode {
 		parse_return_statement(parser);
 	} else if lex_token_cmp(&parser.*.lex, TokenKind.Keyword, "if") {
 		parse_if_statement(parser);
+	} else if lex_token_cmp(&parser.*.lex, TokenKind.Keyword, "while") {
+		parse_while_statement(parser);
 	} else if lex_token_cmp(&parser.*.lex, TokenKind.Symbol, "{") {
 		parse_block(parser);
 	} else {
@@ -1958,7 +2007,7 @@ fun parse_statement(parser: *Parser) : *ASTNode {
 	}
 
 	if stmt as i32 != 0 {
-		if stmt.*.kind != ASTNodeKind.If && stmt.*.kind != ASTNodeKind.Block {
+		if stmt.*.kind != ASTNodeKind.If && stmt.*.kind != ASTNodeKind.While && stmt.*.kind != ASTNodeKind.Block {
 			if !parse_expect_symbol(parser, ";") {
 				printf("Error: Expected ';' after expression statement\n");
 				exit(0);
@@ -2154,7 +2203,7 @@ fun parse_program(parser: *Parser) : *ASTNode {
 // ============================================================================
 
 fun main() : i32 {
-	let src: *u8 = read_file_all("examples/test_else_if.line");
+	let src: *u8 = read_file_all("examples/test_if_expr.line");
 	defer free(src);
 
 	let parser: Parser = parser_init(lex_init(src));

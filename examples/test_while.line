@@ -1,0 +1,9 @@
+fun test_basic_while() : i32 {
+	let count: i32 = 0;
+	
+	while count < 3 {
+		printf("Hello\n");
+	}
+	
+	return 0;
+}
