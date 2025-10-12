@@ -1,0 +1,13 @@
+struct Engine;
+
+use Renderer;
+use EngineState;
+
+render: Renderer,
+state: EngineState,
+
+fun New() : @This() {
+	return .{
+		.render = Renderer::New()
+	}
+}

@@ -1,0 +1,8 @@
+use Engine;
+
+fun main() : i32 {
+	let engine = Engine::New();
+	engine.render.renderRectangle(10.0, 20.0, 100.0, 50.0);
+
+	println("Hello, World!")
+}

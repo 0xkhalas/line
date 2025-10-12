@@ -1,0 +1,10 @@
+enum EngineState;
+
+Off: struct {
+		code: i32,
+		description: String,
+},
+Idle: i32,
+Running = 5,
+Paused,
+Stopped,
