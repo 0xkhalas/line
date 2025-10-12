@@ -9,6 +9,12 @@ fun main() : i32 {
 		age: i32,
 	};
 
+	const world = enum {
+		world,
+		name,
+		age = 5,
+	};
+
 	let num: i32 = 5;
 	let name: str = "Hello World";
 	let sum = num1 + name;

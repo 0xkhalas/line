@@ -1,0 +1,7 @@
+fun main() : i32 {
+	const Prototype = struct {
+		world,
+		name,
+		age = 5,
+	};
+}

@@ -514,12 +514,14 @@ fun lex_print(state: *LexState, token: *Token) {
 
 const ASTNodeKind = enum {
 	Struct,
+	Enum,
+	Enumerator,
+	Member,
+	Let,
+	Const,
 	Function,
 	Block,
 	Return,
-	Let,
-	Const,
-	Member,
 	Type,
 	Literal,
 	Binary,
@@ -549,6 +551,7 @@ const TypeKind = enum {
 	Array,
 	Named,
 	Struct,
+	Enum,
 }
 
 const Type = struct {
@@ -733,6 +736,13 @@ fun ast_set_member_data(node: *ASTNode, name: SpanSource, is_public: bool) {
 	node.*.data = data as *u8;
 }
 
+fun ast_set_enumerator_data(node: *ASTNode, name: SpanSource) {
+	let data: *MemberData = malloc(@sizeOf(MemberData)) as *MemberData;
+	data.*.name = name;
+	data.*.is_public = true;
+	node.*.data = data as *u8;
+}
+
 fun ast_set_if_data(node: *ASTNode, has_else: bool) {
 	let data: *IfData = malloc(@sizeOf(IfData)) as *IfData;
 	data.*.has_else = has_else;
@@ -888,6 +898,10 @@ fun print_type(lexer: *LexState, typ: *Type, indent: i32) {
 		printf("Type: Struct:\n");
 		print_ast_node(lexer, typ.*.data as *ASTNode, indent + 1);
 	}
+	else if typ.*.kind == TypeKind.Enum {
+		printf("Type: Enum:\n");
+		print_ast_node(lexer, typ.*.data as *ASTNode, indent + 1);
+	}
 	else {
 		printf("Type: %s\n", @enumStr(TypeKind, typ.*.kind));
 	}
@@ -907,6 +921,16 @@ fun print_ast_node(lexer: *LexState, node: *ASTNode, indent: i32) {
 		while j < list_size(&node.*.children) as i32 {
 			let child: *ASTNode = list_get(&node.*.children, j) as *ASTNode;
 			
+			print_ast_node(lexer, child, indent + 1);
+			j = j + 1;
+		}
+	}
+	else if node.*.kind == ASTNodeKind.Enum {
+		printf("ASTNode: Enum\n");
+
+		let j: i32 = 0;
+		while j < list_size(&node.*.children) as i32 {
+			let child: *ASTNode = list_get(&node.*.children, j) as *ASTNode;
 			print_ast_node(lexer, child, indent + 1);
 			j = j + 1;
 		}
@@ -1008,6 +1032,24 @@ fun print_ast_node(lexer: *LexState, node: *ASTNode, indent: i32) {
 			let var_name_str: *u8 = lex_span_source(lexer, data.*.name, false);
 			printf("ASTNode: %s %s '%s'\n", visibility, if is_const { "Const" } else { "Let" }, var_name_str);
 			free(var_name_str);
+		}
+
+		let j: i32 = 0;
+		while j < list_size(&node.*.children) as i32 {
+			let child: *ASTNode = list_get(&node.*.children, j) as *ASTNode;
+			print_ast_node(lexer, child, indent + 1);
+			j = j + 1;
+		}
+	}
+	else if node.*.kind == ASTNodeKind.Enumerator {
+		let data: *MemberData = node.*.data as *MemberData;
+		
+		if data as i32 == 0 {
+			printf("ASTNode: Enumerator <no data>\n");
+		} else {
+			let member_name_str: *u8 = lex_span_source(lexer, data.*.name, false);
+			printf("ASTNode: Enumerator '%s'\n", member_name_str);
+			free(member_name_str);
 		}
 
 		let j: i32 = 0;
@@ -1248,7 +1290,7 @@ fun parse_expect_symbol(parser: *Parser, symbol: *u8) : bool {
 // TYPE PARSING
 // ============================================================================
 
-fun parse_struct(parser: *Parser) : *ASTNode;
+fun parse_aggregate(parser: *Parser, kind: ASTNodeKind) : *ASTNode;
 
 fun parse_type(parser: *Parser) : Type {
 	let token: Token = lex_peek(&parser.*.lex, 0);
@@ -1303,7 +1345,10 @@ fun parse_type(parser: *Parser) : Type {
 		return typ;
 	} else if strcmp(token_str, "struct") == 0 {
 		typ.kind = TypeKind.Struct;
-		typ.data = parse_struct(parser) as *u8;
+		typ.data = parse_aggregate(parser, ASTNodeKind.Struct) as *u8;
+	} else if strcmp(token_str, "enum") == 0 {
+		typ.kind = TypeKind.Enum;
+		typ.data = parse_aggregate(parser, ASTNodeKind.Enum) as *u8;
 	} else if strcmp(token_str, "*") == 0 {
 		parse_advance(parser);
 		typ.kind = TypeKind.Pointer;
@@ -2312,6 +2357,31 @@ fun parse_member_declaration(parser: *Parser) : *ASTNode {
 	return node;
 }
 
+fun parse_enumerator_declaration(parser: *Parser) : *ASTNode {
+	let parser_start_pos: i32 = parser.*.lex.pos;
+
+	let enum_name_token: Token = lex_next(&parser.*.lex);
+	if enum_name_token.kind != TokenKind.Identifier {
+		printf("Error: Expected enumerator name identifier\n");
+		exit(0);
+	}
+
+	let node: *ASTNode = ast_create_node(ASTNodeKind.Enumerator, lex_init_span_source(parser_start_pos, parser.*.lex.pos));
+	ast_set_enumerator_data(node, enum_name_token.span);
+
+	if parse_expect_symbol(parser, "=") {
+		let value_expr: *ASTNode = parse_expression(parser, 0);
+		if value_expr as i32 == 0 {
+			printf("Error: Expected expression after '=' in enumerator\n");
+			ast_free_node(node);
+			return 0 as *ASTNode;
+		}
+		ast_add_child(node, value_expr);
+	}
+
+	return node;
+}
+
 fun parse_declaration(parser: *Parser) : *ASTNode {
 	let position: i32 = 0;
 
@@ -2346,6 +2416,10 @@ fun parse_declaration(parser: *Parser) : *ASTNode {
 			if next_token.kind == TokenKind.Symbol && strcmp(next_str, ":") == 0 {
 				return parse_member_declaration(parser);
 			}
+			else if next_token.kind == TokenKind.Symbol && (strcmp(next_str, ",") == 0 || strcmp(next_str, "=") == 0) {
+				return parse_enumerator_declaration(parser);
+			}
+
 		}
 
 		if token.kind == TokenKind.EndOfFile {
@@ -2358,14 +2432,10 @@ fun parse_declaration(parser: *Parser) : *ASTNode {
 	return 0 as *ASTNode;
 }
 
-fun parse_struct(parser: *Parser) : *ASTNode {
-	let root: *ASTNode = ast_create_node(ASTNodeKind.Struct, lex_init_span_source(0, 0));
-	
-	if !parse_expect_keyword(parser, "struct") {
-		printf("Error: Expected 'struct' keyword\n");
-		ast_free_node(root);
-		return 0 as *ASTNode;
-	}
+fun parse_aggregate(parser: *Parser, kind: ASTNodeKind) : *ASTNode {
+	let root: *ASTNode = ast_create_node(kind, lex_init_span_source(parser.*.lex.pos, 0));
+
+	parse_advance(parser);
 
 	if !parse_expect_symbol(parser, "{") {
 		printf("Error: Expected '{' after 'struct' keyword\n");
@@ -2399,6 +2469,8 @@ fun parse_struct(parser: *Parser) : *ASTNode {
 		ast_free_node(root);
 		return 0 as *ASTNode;
 	}
+
+	root.*.span.end = parser.*.lex.pos;
 
 	return root;
 }
