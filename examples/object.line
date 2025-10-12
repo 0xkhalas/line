@@ -1,0 +1,15 @@
+fun sum(num1: i32, num2: i32) : i32 {
+	return num1 + num2;
+}
+
+fun main() : i32 {
+	const Prototype = struct {
+		pub world_id: i32,
+		name: *u8,
+		age: i32,
+	};
+
+	let num: i32 = 5;
+	let name: str = "Hello World";
+	let sum = num1 + name;
+}
