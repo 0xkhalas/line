@@ -6,13 +6,14 @@ let Player = struct {
 
 let GameModes = enum {
 	Easy,
-	Medium,
+	Medium : struct {
+		difficulty: i32,
+	},
 	Hard,
 };
 
 fun main() : i32 {
 	// Anonymous array
-	let nums: [5]i32 = .{ 1, 2, 3, 4, 5 };
 	let nums: []i32 = .{ 1, 2, 3, 4, 5 }; // anyonymous array with Inferred Sized
 
 	// Anonymous struct
@@ -20,8 +21,12 @@ fun main() : i32 {
 		.name = "John",
 		.age = 30,
 		.health = 100,
-	}
+	};
 
 	// Anonymous enum
-	let mode: GameModes = .Medium;
+	let mode: GameModes = .Medium {
+		.difficulty = 1
+	};
+
+	return 5;
 }

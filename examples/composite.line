@@ -2,6 +2,8 @@ fun main() : i32 {
 	// array declaration
 	const nums: [5]i32 = [5]i32 { 1, 2, 3, 4, 5 }; // typed composite array with Sized
 
+	let a = .5;
+
 	// struct declaration
 	const player = Player { .name = "John", .age = 30, .health = 100 }; // typed composite struct
 }
