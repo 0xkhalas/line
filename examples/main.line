@@ -1,4 +1,4 @@
-extern fun printf(format: *u8, params values: [any]);
+extern fun printf(format: *u8, params values: []any);
 
 fun main() : i32 {
 	return 5 + ((2 + 3) * (4 + 5)) + main[0].*;

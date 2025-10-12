@@ -1,0 +1,27 @@
+let Player = struct {
+	pub name: *u8,
+	age: i32,
+	health: i32,
+};
+
+let GameModes = enum {
+	Easy,
+	Medium,
+	Hard,
+};
+
+fun main() : i32 {
+	// Anonymous array
+	let nums: [5]i32 = .{ 1, 2, 3, 4, 5 };
+	let nums: []i32 = .{ 1, 2, 3, 4, 5 }; // anyonymous array with Inferred Sized
+
+	// Anonymous struct
+	let player: Player = .{
+		.name = "John",
+		.age = 30,
+		.health = 100,
+	}
+
+	// Anonymous enum
+	let mode: GameModes = .Medium;
+}

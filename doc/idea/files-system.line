@@ -1,0 +1,19 @@
+// defining a Program Type with name by default will set the file name as the program name, if not defined will be struct
+// <aggregateType> <name?>;
+struct; // Program Type
+enum; // Program Type
+enum world; // Program Type with name
+struct world; // Program Type with name
+
+// Importing the standard library normally (global)
+use std;
+
+// Importing the standard library with an as alias
+const standard = use std;
+
+fun main() : i32 {
+	std::println("Module system works!");
+	standard::println("Standard module works!");
+
+	return 0;
+}

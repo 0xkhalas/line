@@ -1362,13 +1362,29 @@ fun parse_type(parser: *Parser) : Type {
 		typ.data = malloc(@sizeOf(TypeArray)) as *u8;
 
 		let arr_data: *TypeArray = typ.data as *TypeArray;
-		arr_data.*.base = parse_type(parser);
-		arr_data.*.size = 0;
+		arr_data.*.size = -1;
+
+		let next_token: Token = lex_peek(&parser.*.lex, 0);
+		if next_token.kind == TokenKind.Integer {
+			let size_str: *u8 = lex_span_source(&parser.*.lex, next_token.span, false);
+			defer free(size_str);
+
+			let size: i32 = 0;
+			let i: i32 = 0;
+			while size_str[i] != 0 {
+				size = size * 10 + (size_str[i] - '0') as i32;
+				i = i + 1;
+			}
+			arr_data.*.size = size;
+			parse_advance(parser);
+		}
 
 		if !parse_expect_symbol(parser, "]") {
 			printf("Error: Expected ']'\n");
 			exit(1);
 		}
+
+		arr_data.*.base = parse_type(parser);
 	} else {
 		typ.kind = TypeKind.Named;
 		typ.data = strcpy(malloc(strlen(token_str) + 1) as *u8, token_str) as *u8;
@@ -2507,7 +2523,7 @@ fun parse_program(parser: *Parser) : *ASTNode {
 // ============================================================================
 
 fun main() : i32 {
-	let src: *u8 = read_file_all("examples/object.line");
+	let src: *u8 = read_file_all("examples/main.line");
 	defer free(src);
 
 	let parser: Parser = parser_init(lex_init(src));
