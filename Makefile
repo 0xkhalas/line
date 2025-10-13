@@ -9,6 +9,9 @@ build:
 	@./bin/compiler compile src/main.line bin/main.o
 	@cc ./bin/main.o -o ./bin/line
 
+self:
+	./bin/line src/main.line
+
 run:
 	./bin/line
 

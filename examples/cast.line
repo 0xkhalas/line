@@ -1,0 +1,10 @@
+fun main() : i32 {
+    let num: i32 = 42;
+    let float_num: f64 = num as f64; // Cast i32 to float
+
+    if num as f64 > 40.0 {
+        printf("Number is greater than 40.0\n");
+    }
+
+    return 0;
+}

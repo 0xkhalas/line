@@ -1,0 +1,11 @@
+
+
+fun main() : i32 {
+    let world = 1;
+
+    if 10 > .{ world } {
+        return 10;
+    } else {
+        return world;
+    }
+}
