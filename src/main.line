@@ -3,8 +3,8 @@
 // ============================================================================
 
 // Standard I/O functions
-pub extern fun printf(format: *u8, params values: [any]);
-pub extern fun scanf(format: *u8, params values: [any]);
+pub extern fun printf(format: *u8, params values: []any);
+pub extern fun scanf(format: *u8, params values: []any);
 pub extern fun fopen(path: *u8, mode: *u8) : *void;
 pub extern fun fclose(file: *void);
 pub extern fun fread(ptr: *void, size: u32, count: u32, file: *void) : u32;
@@ -508,6 +508,10 @@ fun lex_token_cmp(state: *LexState, kind: TokenKind, str: *u8) : bool {
 	return result;
 }
 
+// ============================================================================
+// LEXER PRINTING (Debug)
+// ============================================================================
+
 fun lex_print(state: *LexState, token: *Token) {
 	let token_str: *u8 = lex_span_source(state, token.*.span, false);
 	defer free(token_str);
@@ -913,6 +917,9 @@ fun ast_free_node(node: *ASTNode) {
 	free(node);
 }
 
+// ============================================================================
+// AST PRINTING (Debug)
+// ============================================================================
 
 fun add_indent(indent: i32) {
 	let i: i32 = 0;
@@ -922,9 +929,9 @@ fun add_indent(indent: i32) {
 	}
 }
 
-fun print_ast_node(lexer: *LexState, node: *ASTNode, indent: i32);
+fun ast_print_node(lexer: *LexState, node: *ASTNode, indent: i32);
 
-fun print_type(lexer: *LexState, typ: *Type, indent: i32) {
+fun ast_print_type(lexer: *LexState, typ: *Type, indent: i32) {
 	if typ as i32 == 0 {
 		printf("Type: <null>\n");
 		return;
@@ -939,30 +946,30 @@ fun print_type(lexer: *LexState, typ: *Type, indent: i32) {
 	else if typ.*.kind == TypeKind.Pointer {
 		printf("Type: Pointer to:\n");
 		let base: *Type = typ.*.data as *Type;
-		print_type(lexer, base, indent + 1);
+		ast_print_type(lexer, base, indent + 1);
 	}
 	else if typ.*.kind == TypeKind.Array {
 		let arr: *TypeArray = typ.*.data as *TypeArray;
 		printf("Type: Array (size: %d) of:\n", arr.*.size);
-		print_type(lexer, &arr.*.base, indent + 1);
+		ast_print_type(lexer, &arr.*.base, indent + 1);
 	}
 	else if typ.*.kind == TypeKind.Named {
 		printf("Type: Named (%s)\n", typ.*.data);
 	}
 	else if typ.*.kind == TypeKind.Struct {
 		printf("Type: Struct:\n");
-		print_ast_node(lexer, typ.*.data as *ASTNode, indent + 1);
+		ast_print_node(lexer, typ.*.data as *ASTNode, indent + 1);
 	}
 	else if typ.*.kind == TypeKind.Enum {
 		printf("Type: Enum:\n");
-		print_ast_node(lexer, typ.*.data as *ASTNode, indent + 1);
+		ast_print_node(lexer, typ.*.data as *ASTNode, indent + 1);
 	}
 	else {
 		printf("Type: %s\n", @enumStr(TypeKind, typ.*.kind));
 	}
 }
 
-fun print_ast_node(lexer: *LexState, node: *ASTNode, indent: i32) {
+fun ast_print_node(lexer: *LexState, node: *ASTNode, indent: i32) {
 	if node as i32 == 0 {
 		return;
 	}
@@ -976,7 +983,7 @@ fun print_ast_node(lexer: *LexState, node: *ASTNode, indent: i32) {
 		while j < list_size(&node.*.children) as i32 {
 			let child: *ASTNode = list_get(&node.*.children, j) as *ASTNode;
 
-			print_ast_node(lexer, child, indent + 1);
+			ast_print_node(lexer, child, indent + 1);
 			j = j + 1;
 		}
 	}
@@ -986,7 +993,7 @@ fun print_ast_node(lexer: *LexState, node: *ASTNode, indent: i32) {
 		let j: i32 = 0;
 		while j < list_size(&node.*.children) as i32 {
 			let child: *ASTNode = list_get(&node.*.children, j) as *ASTNode;
-			print_ast_node(lexer, child, indent + 1);
+			ast_print_node(lexer, child, indent + 1);
 			j = j + 1;
 		}
 	}
@@ -1033,14 +1040,14 @@ fun print_ast_node(lexer: *LexState, node: *ASTNode, indent: i32) {
 			printf("Param %s, comptime: %d, variadic: %d\n", param_name_str, param.*.is_comptime, param.*.is_variadic);
 			free(param_name_str);
 
-			print_type(lexer, &param.*.param_type, indent + 3);
+			ast_print_type(lexer, &param.*.param_type, indent + 3);
 			k = k + 1;
 		}
 
 		add_indent(indent + 1);
 		printf("Return Type:\n");
 
-		print_type(lexer, &data.*.return_type, indent + 2);
+		ast_print_type(lexer, &data.*.return_type, indent + 2);
 
 		add_indent(indent + 1);
 		if list_size(&node.*.children) == 0 {
@@ -1052,7 +1059,7 @@ fun print_ast_node(lexer: *LexState, node: *ASTNode, indent: i32) {
 		let j: i32 = 0;
 		while j < list_size(&node.*.children) as i32 {
 			let child: *ASTNode = list_get(&node.*.children, j) as *ASTNode;
-			print_ast_node(lexer, child, indent + 2);
+			ast_print_node(lexer, child, indent + 2);
 			j = j + 1;
 		}
 	}
@@ -1062,7 +1069,7 @@ fun print_ast_node(lexer: *LexState, node: *ASTNode, indent: i32) {
 		let j: i32 = 0;
 		while j < list_size(&node.*.children) as i32 {
 			let child: *ASTNode = list_get(&node.*.children, j) as *ASTNode;
-			print_ast_node(lexer, child, indent + 1);
+			ast_print_node(lexer, child, indent + 1);
 			j = j + 1;
 		}
 	}
@@ -1072,7 +1079,7 @@ fun print_ast_node(lexer: *LexState, node: *ASTNode, indent: i32) {
 		let j: i32 = 0;
 		while j < list_size(&node.*.children) as i32 {
 			let child: *ASTNode = list_get(&node.*.children, j) as *ASTNode;
-			print_ast_node(lexer, child, indent + 1);
+			ast_print_node(lexer, child, indent + 1);
 			j = j + 1;
 		}
 	}
@@ -1092,7 +1099,7 @@ fun print_ast_node(lexer: *LexState, node: *ASTNode, indent: i32) {
 		let j: i32 = 0;
 		while j < list_size(&node.*.children) as i32 {
 			let child: *ASTNode = list_get(&node.*.children, j) as *ASTNode;
-			print_ast_node(lexer, child, indent + 1);
+			ast_print_node(lexer, child, indent + 1);
 			j = j + 1;
 		}
 	}
@@ -1110,7 +1117,7 @@ fun print_ast_node(lexer: *LexState, node: *ASTNode, indent: i32) {
 		let j: i32 = 0;
 		while j < list_size(&node.*.children) as i32 {
 			let child: *ASTNode = list_get(&node.*.children, j) as *ASTNode;
-			print_ast_node(lexer, child, indent + 1);
+			ast_print_node(lexer, child, indent + 1);
 			j = j + 1;
 		}
 	}
@@ -1129,14 +1136,14 @@ fun print_ast_node(lexer: *LexState, node: *ASTNode, indent: i32) {
 		let j: i32 = 0;
 		while j < list_size(&node.*.children) as i32 {
 			let child: *ASTNode = list_get(&node.*.children, j) as *ASTNode;
-			print_ast_node(lexer, child, indent + 1);
+			ast_print_node(lexer, child, indent + 1);
 			j = j + 1;
 		}
 	}
 	else if node.*.kind == ASTNodeKind.Type {
 		let typ: *Type = node.*.data as *Type;
 		printf("ASTNode: Type\n");
-		print_type(lexer, typ, indent + 1);
+		ast_print_type(lexer, typ, indent + 1);
 	}
 	else if node.*.kind == ASTNodeKind.Literal {
 		let data: *LiteralData = node.*.data as *LiteralData;
@@ -1155,7 +1162,7 @@ fun print_ast_node(lexer: *LexState, node: *ASTNode, indent: i32) {
 		let j: i32 = 0;
 		while j < list_size(&node.*.children) as i32 {
 			let child: *ASTNode = list_get(&node.*.children, j) as *ASTNode;
-			print_ast_node(lexer, child, indent + 1);
+			ast_print_node(lexer, child, indent + 1);
 			j = j + 1;
 		}
 	}
@@ -1166,7 +1173,7 @@ fun print_ast_node(lexer: *LexState, node: *ASTNode, indent: i32) {
 		let j: i32 = 0;
 		while j < list_size(&node.*.children) as i32 {
 			let child: *ASTNode = list_get(&node.*.children, j) as *ASTNode;
-			print_ast_node(lexer, child, indent + 1);
+			ast_print_node(lexer, child, indent + 1);
 			j = j + 1;
 		}
 	}
@@ -1207,7 +1214,7 @@ fun print_ast_node(lexer: *LexState, node: *ASTNode, indent: i32) {
 				let index_ptr: *i32 = step.*.data as *i32;
 				let child_index: i32 = index_ptr.*;
 				let index_expr: *ASTNode = list_get(&node.*.children, child_index) as *ASTNode;
-				print_ast_node(lexer, index_expr, indent + 3);
+				ast_print_node(lexer, index_expr, indent + 3);
 			}
 			j = j + 1;
 		}
@@ -1218,7 +1225,7 @@ fun print_ast_node(lexer: *LexState, node: *ASTNode, indent: i32) {
 		add_indent(indent + 1);
 		printf("Function:\n");
 		let func_expr: *ASTNode = list_get(&node.*.children, 0) as *ASTNode;
-		print_ast_node(lexer, func_expr, indent + 2);
+		ast_print_node(lexer, func_expr, indent + 2);
 
 		add_indent(indent + 1);
 		let argument_count: i32 = list_size(&node.*.children) - 1;
@@ -1231,7 +1238,7 @@ fun print_ast_node(lexer: *LexState, node: *ASTNode, indent: i32) {
 		let j: i32 = 1;
 		while j < list_size(&node.*.children) as i32 {
 			let arg: *ASTNode = list_get(&node.*.children, j) as *ASTNode;
-			print_ast_node(lexer, arg, indent + 2);
+			ast_print_node(lexer, arg, indent + 2);
 			j = j + 1;
 		}
 	}
@@ -1242,18 +1249,18 @@ fun print_ast_node(lexer: *LexState, node: *ASTNode, indent: i32) {
 		add_indent(indent + 1);
 		printf("Condition:\n");
 		let condition: *ASTNode = list_get(&node.*.children, 0) as *ASTNode;
-		print_ast_node(lexer, condition, indent + 2);
+		ast_print_node(lexer, condition, indent + 2);
 
 		add_indent(indent + 1);
 		printf("Then:\n");
 		let then_stmt: *ASTNode = list_get(&node.*.children, 1) as *ASTNode;
-		print_ast_node(lexer, then_stmt, indent + 2);
+		ast_print_node(lexer, then_stmt, indent + 2);
 
 		if data.*.has_else {
 			add_indent(indent + 1);
 			printf("Else:\n");
 			let else_stmt: *ASTNode = list_get(&node.*.children, 2) as *ASTNode;
-			print_ast_node(lexer, else_stmt, indent + 2);
+			ast_print_node(lexer, else_stmt, indent + 2);
 		}
 	}
 	else if node.*.kind == ASTNodeKind.While {
@@ -1262,12 +1269,12 @@ fun print_ast_node(lexer: *LexState, node: *ASTNode, indent: i32) {
 		add_indent(indent + 1);
 		printf("Condition:\n");
 		let condition: *ASTNode = list_get(&node.*.children, 0) as *ASTNode;
-		print_ast_node(lexer, condition, indent + 2);
+		ast_print_node(lexer, condition, indent + 2);
 
 		add_indent(indent + 1);
 		printf("Body:\n");
 		let body: *ASTNode = list_get(&node.*.children, 1) as *ASTNode;
-		print_ast_node(lexer, body, indent + 2);
+		ast_print_node(lexer, body, indent + 2);
 	}
 	else if node.*.kind == ASTNodeKind.Assignment {
 		printf("ASTNode: Assignment\n");
@@ -1275,12 +1282,12 @@ fun print_ast_node(lexer: *LexState, node: *ASTNode, indent: i32) {
 		add_indent(indent + 1);
 		printf("Target:\n");
 		let target: *ASTNode = list_get(&node.*.children, 0) as *ASTNode;
-		print_ast_node(lexer, target, indent + 2);
+		ast_print_node(lexer, target, indent + 2);
 
 		add_indent(indent + 1);
 		printf("Value:\n");
 		let value: *ASTNode = list_get(&node.*.children, 1) as *ASTNode;
-		print_ast_node(lexer, value, indent + 2);
+		ast_print_node(lexer, value, indent + 2);
 	}
 	else if node.*.kind == ASTNodeKind.Composite {
 		let data: *CompositeData = node.*.data as *CompositeData;
@@ -1292,7 +1299,7 @@ fun print_ast_node(lexer: *LexState, node: *ASTNode, indent: i32) {
 		printf("ASTNode: Composite\n");
 		add_indent(indent + 1);
 		printf("Type:\n");
-		print_type(lexer, &data.*.ty, indent + 2);
+		ast_print_type(lexer, &data.*.ty, indent + 2);
 
 		add_indent(indent + 1);
 		let field_count: i32 = list_size(&data.*.fields);
@@ -1316,7 +1323,7 @@ fun print_ast_node(lexer: *LexState, node: *ASTNode, indent: i32) {
 			}
 
 			if field.*.value as i32 != 0 {
-				print_ast_node(lexer, field.*.value, indent + 3);
+				ast_print_node(lexer, field.*.value, indent + 3);
 			}
 			j = j + 1;
 		}
@@ -1327,7 +1334,7 @@ fun print_ast_node(lexer: *LexState, node: *ASTNode, indent: i32) {
 		let j: i32 = 0;
 		while j < list_size(&node.*.children) as i32 {
 			let arg: *ASTNode = list_get(&node.*.children, j) as *ASTNode;
-			print_ast_node(lexer, arg, indent + 2);
+			ast_print_node(lexer, arg, indent + 2);
 			j = j + 1;
 		}
 	}
@@ -1818,7 +1825,7 @@ fun parse_composite(parser: *Parser) : *ASTNode {
 
 	let ty: Type = parse_type(parser);
 
-	print_type(&parser.*.lex, &ty, 0);
+	ast_print_type(&parser.*.lex, &ty, 0);
 
 	if !parse_expect_symbol(parser, "{") {
 		printf("Error: Expected '{' after type in composite literal\n");
@@ -1919,7 +1926,7 @@ fun parse_anonymous(parser: *Parser) : *ASTNode {
 	let anon_node: *ASTNode = ast_create_node(ASTNodeKind.Anonymous, lex_init_span_source(expr.*.span.start - 1, expr.*.span.end));
 	ast_add_child(anon_node, expr);
 
-	print_ast_node(&parser.*.lex, anon_node, 0);
+	ast_print_node(&parser.*.lex, anon_node, 0);
 
 	return anon_node;
 }
@@ -2763,15 +2770,21 @@ fun parse_program(parser: *Parser) : *ASTNode {
 // MAIN
 // ============================================================================
 
-fun main() : i32 {
-	let src: *u8 = read_file_all("examples/anonymous.line");
+fun main(argc: i32, argv: **u8) : i32 {
+	let filename: *u8 = "examples/main.line";
+
+	if argc > 1 {
+		filename = argv[1];
+	}
+
+	let src: *u8 = read_file_all(filename);
 	defer free(src);
 
 	let parser: Parser = parser_init(lex_init(src));
 	let ast: *ASTNode = parse_program(&parser);
 	defer ast_free_node(ast);
 
-	print_ast_node(&parser.lex, ast, 0);
+	ast_print_node(&parser.lex, ast, 0);
 
 	return 0;
 }

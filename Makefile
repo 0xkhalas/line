@@ -1,17 +1,18 @@
-.PHONY: all build run clean
+.PHONY: all build clean
 
-all: build run clean
+all: build clean
 
 ir:
-	@../../target/release/nest ir src/main.line
+	@./bin/compiler ir src/main.line
 
 build:
-	@../../target/release/nest compile src/main.line
-	@cc main.o -o line.tmp
+	@./bin/compiler compile src/main.line bin/main.o
+	@cc ./bin/main.o -o ./bin/line
 
-run:
-	@./line.tmp
+get:
+	cargo build --release --manifest-path ../nest/Cargo.toml
+	mkdir -p bin
+	cp ../nest/target/release/nest ./bin/compiler
 
 clean:
-	@rm main.o
-	@rm line.tmp
+	@rm -f ./bin/main.o
