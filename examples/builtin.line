@@ -1,0 +1,14 @@
+
+
+fun main() : i32 {
+	let heap_number: *i32 = @new(i32);
+	@set(nums, 0);
+	@copy(num, temp);
+	@move(num, temp);
+	@delete(heap_number);
+	@assert(1 == 1);
+	@print("Hello, World!");
+	let type: Type = @typeOf(i32);
+	let name: *u8 = @nameOf(i32);
+	let size: i32 = @sizeOf(i32);
+}
