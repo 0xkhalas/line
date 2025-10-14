@@ -5,6 +5,8 @@ fun test_complex_assignment() : i32 {
 	
 	result = x * y + 2;
 	x = result - y;
+
+	result.world = 5;
 	
 	return x;
 }

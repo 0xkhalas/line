@@ -3,7 +3,7 @@ extern fun printf(format: *u8, params values: []any);
 fun main() : i32 {
 	continue;
 
-	break 5;
+	break;
 
 	defer 5;
 
