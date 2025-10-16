@@ -1779,6 +1779,7 @@ fun print_binary_proirity(bp: BinaryProirity) {
 // ============================================================================
 
 fun parse_expression(parser: *Parser, limit: i32) : *ASTNode;
+fun parse_if(parser: *Parser) : *ASTNode;
 
 fun parse_literal(parser: *Parser) : *ASTNode {
 	let token: Token = lex_peek(&parser.*.lex, 0);
@@ -2130,7 +2131,14 @@ fun parse_builtin_call(parser: *Parser) : *ASTNode {
 	return node;
 }
 
-fun parse_if(parser: *Parser) : *ASTNode;
+fun parse_type_node(parser: *Parser) : *ASTNode {
+	let factor_type: Type = parse_type(parser);
+	let type_node: *ASTNode = ast_create_node(ASTNodeKind.Type, lex_init_span_source(parser.*.lex.pos, 0));
+	type_node.*.data = malloc(@sizeOf(Type)) as *u8;
+	memcpy(type_node.*.data as *void, &factor_type, @sizeOf(Type));
+	type_node.*.span.end = parser.*.lex.pos;
+	return type_node;
+}
 
 fun parse_factor(parser: *Parser) : *ASTNode {
 	let token: Token = lex_peek(&parser.*.lex, 0);
@@ -2201,13 +2209,7 @@ fun parse_factor(parser: *Parser) : *ASTNode {
 		}
 	}
 
-	let factor_type: Type = parse_type(parser);
-	let type_node: *ASTNode = ast_create_node(ASTNodeKind.Type, lex_init_span_source(parser.*.lex.pos, 0));
-	type_node.*.data = malloc(@sizeOf(Type)) as *u8;
-	memcpy(type_node.*.data as *void, &factor_type, @sizeOf(Type));
-	type_node.*.span.end = parser.*.lex.pos;
-
-	return type_node;
+	return parse_type_node(parser);
 }
 
 fun parse_expression(parser: *Parser, limit: i32) : *ASTNode {
@@ -2221,21 +2223,23 @@ fun parse_expression(parser: *Parser, limit: i32) : *ASTNode {
 
 	while opr.operator != Operator.None && opr.priority > limit {
 		parse_binary_proirity(parser, true);
-
-		let right: *ASTNode = parse_expression(parser, opr.priority + 1);
-
-		if right as i32 == 0 {
-			printf("Error: Expected right-hand side expression\n");
-			ast_free_node(left);
-			return 0 as *ASTNode;
-		}
-
 		if opr.operator == Operator.Cast {
+			let right: *ASTNode = parse_type_node(parser);
+
 			let new_left: *ASTNode = ast_create_node(ASTNodeKind.Cast, lex_init_span_source(left.*.span.start, right.*.span.end));
 			ast_add_child(new_left, left);
 			ast_add_child(new_left, right);
+
 			left = new_left;
 		} else {
+			let right: *ASTNode = parse_expression(parser, opr.priority + 1);
+
+			if right as i32 == 0 {
+				printf("Error: Expected right-hand side expression\n");
+				ast_free_node(left);
+				return 0 as *ASTNode;
+			}
+
 			let new_left: *ASTNode = ast_create_node(ASTNodeKind.Binary, lex_init_span_source(left.*.span.start, right.*.span.end));
 			ast_set_binary_op_data(new_left, opr.operator);
 			ast_add_child(new_left, left);
