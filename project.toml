@@ -1,4 +1,7 @@
 [project]
 name = "line"
-entry = "src/main.ln"
+entry = "src/driver.ln"
 clang = []
+
+[project.vars]
+std = "/home/aolx/dev/line/src/std.ln"
