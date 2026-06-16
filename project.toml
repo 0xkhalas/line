@@ -1,0 +1,4 @@
+[project]
+name = "line"
+entry = "src/main.ln"
+clang = []
