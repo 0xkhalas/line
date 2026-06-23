@@ -1,0 +1,43 @@
+Span :: struct { start: i32, end: i32 }
+
+Location :: struct { idx: i32, line: i32 }
+
+Token :: struct {
+	span: Span,
+	kind: enum {
+		Identifier,
+		Integer,
+		Float,
+		String,
+		Char,
+		Symbol,
+		Keyword,
+		EndOfFile,
+	}
+}
+
+Lexer :: struct {
+	src: &std.String,
+	pos: i32,
+	loc: Location
+}
+
+Lexer.init :: fun(src: &std.String) -> Self {
+	Self(src, 0, (0, 1))
+}
+
+Lexer.isKeyword :: fun(keyword: &u8) -> bool {
+	std.matches(keyword, &[
+		"fun", "struct", "enum", "union", "match", "if", "else", "for", "in", "return", "defer", "break", "continue", "null", "local", "extern", "packed", "as", "true", "false", "scope"
+		"type", "any",
+		"i8", "i16", "i32", "i128", "u8", "u16", "u32", "u128", "f16", "f32", "f64", "f128", "bool", "usize", "isize"
+	])
+}
+
+Lexer.isEOF :: fun(&self) -> bool {
+	self.pos > self.src.len
+}
+
+Lexer.next :: fun(&self) {
+
+}

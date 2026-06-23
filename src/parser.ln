@@ -1,0 +1,39 @@
+ParserExpect :: struct {
+	pos: struct { start: i32, end: i32 },
+	msg: std.String
+}
+
+Parser :: struct {
+	stack: std.LinkedList(std.String), // when call `take` will push item in top of stack and will pop all when call `map`
+	exepcts: std.ArrayList(ParserExpect),
+}
+
+Parser.init :: fun() {}
+Parser.deinit :: fun() {}
+Parser.map :: fun() {}
+Parser.query :: fun() {}
+Parser.parse :: fun(text: &[]u8, begin: &Query) -> std.Result(std.LinkedList(std.String), std.ArrayList(ParseExpect)) {}
+
+// Linked List Connect togather
+Query.string :: fun() {}
+Query.char :: fun() {}
+Query.regex :: fun() {}
+Query.number :: fun() {}
+Query.identifier :: fun() {}
+Query.execpt :: fun() {} // will push last pattern location with message if not right
+Query.and :: fun() {} // will make condtion move in chain
+Query.or :: fun() {} // will take from two pattern
+Query.many :: fun() {} // will run unit condition doesn't working
+Query.take :: fun() {} // will push last pattern value before it
+
+test("parser: test `hello, [name]!`") :: fun() {
+	result :: Parser.init()
+		.and(.string("hello").or(.string("hi")))
+		.and(.char(',')).exepct(String.from("Expect name after variable creation")).take()
+		.and(.whitespace().many())
+		.and(.char('`'))
+		.and(.regex("[a-zA-Z_][a-zA-Z0-9_]*")).take()
+		.and(.char('`'))
+		.and(.char('!'))
+		.parse("Hello, `Ali`!")
+}
