@@ -1,0 +1,8 @@
+|-----------------|-------------|-----------------------------------------
+| Style           | Example     | Common Use Case
+|-----------------|-------------|-----------------------------------------
+| camelCase       | myVariable  | Local Variables, function/methods names
+| PascalCase      | MyStruct    | Struct, Enum, Union, etc..
+| SCREAMING_SNAKE | MAX_PADDING | Constants
+| lowercast       | std         | namespace
+|-----------------|-------------|-----------------------------------------
