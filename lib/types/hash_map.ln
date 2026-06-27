@@ -1,0 +1,5 @@
+/*
+HashMap(String, i32).builder()
+            .insert("TYPE", 5)
+            .init()
+*/

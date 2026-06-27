@@ -1,0 +1,29 @@
+// ----------------------------------------------------------------------------
+// Utils - a helper functions with no location to live on
+// ----------------------------------------------------------------------------
+
+local std :: import("$std")
+
+self :: fun(item: any(T), contains: []T) -> bool {
+	for contain in contains {
+		comptime if std.builtin.hasFunction(T, "eq") {
+			if item.eq(contain) == true { return true; }
+		} else if T == &u8 {
+			if std.c.strcmp(item, contain) == 0 { return true; }
+		} else {
+			if item == contain { return true; }
+		}
+	}
+
+	return false;
+}
+
+test("matches: test cstring") :: fun() {
+	assert(matches("Ali", &["Ali", "Ahmed", "Youesf"]) == true);
+	assert(matches("Khaild", &["Ali", "Ahmed", "Youesf"]) == false);
+}
+
+test("matches: test numbers") :: fun() {
+	assert(matches(1, &[5, 1, 2]) == true);
+	assert(matches(32, &[5, 1, 2]) == false);
+}

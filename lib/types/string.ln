@@ -1,0 +1,259 @@
+// ----------------------------------------------------------------------------
+// String - a growable, heap-backed string.
+// ----------------------------------------------------------------------------
+
+local std :: import("$std")
+
+self :: struct {
+	raw: &u8,
+	len: usize,
+	cap: usize
+}
+
+self.init :: fun() -> typeof(self) {
+	self(raw: std.c.malloc(8), len: 0, cap: 8)
+}
+
+self.deinit :: fun(&self) {
+	self.len = 0;
+	self.cap = 0;
+
+	std.c.free(self.raw as &u8);
+}
+
+self.from :: fun {
+	fun(src: &u8, n: usize) -> typeof(self) {
+		s := typeof(self).init();
+		s.pushBytes(src, n);
+	
+		return s;
+	},
+
+	fun(src: &u8) -> String {
+		String.from(src, std.c.strlen(src))
+	},
+
+	fun(value: i32) -> String {
+		s := String.init();
+
+		if value == 0 {
+			s.push('0');
+			return s;
+		}
+
+		n := value;
+		negative := false;
+
+		if n < 0 {
+			negative = true;
+			n = -n;
+		}
+
+		for n > 0 {
+			digit := (n % 10) as u8;
+			s.push('0' + digit);
+			n = n / 10;
+		}
+
+		if negative {
+			s.push('-');
+		}
+
+		i := 0usize;
+		j := s.len - 1;
+
+		for i < j {
+			tmp := s.raw[i];
+			s.raw[i] = s.raw[j];
+			s.raw[j] = tmp;
+			i += 1;
+			j -= 1;
+		}
+
+		return s;
+	}
+}
+
+self.concat :: fun {
+	fun(&self, other: String) -> String {
+		s := String.init();
+		
+		s.pushBytes(self.raw, self.len);
+		s.pushBytes(other.raw, other.len);
+
+		return s;
+	},
+
+	fun(&self, other: &u8) -> String  {
+		s := String.init();
+		
+		s.pushBytes(self.raw, self.len);
+		s.pushBytes(other, std.c.strlen(other));
+
+		return s;
+	}
+}
+
+self.charAt :: fun(&self, i: i32) -> u8 {
+	self.raw[i]
+}
+
+self.asCstr :: fun(&self) -> &u8 {
+	self.raw[self.len] = 0;
+	self.raw
+}
+
+self.eq :: fun {
+	fun(&self, other: &String) -> bool {
+		if self.len != other.len { return false }
+	
+		for i in 0usize..self.len {
+			if self.raw[i] != other.raw[i] {
+				return false;
+			}
+		}
+	
+		true
+	},
+
+	fun(&self, src: &u8) -> bool {
+		if self.len != std.c.strlen(src) { return false }
+
+		for i in 0usize..self.len {
+			if self.raw[i] != src[i] {
+				return false;
+			}
+		}
+
+		true
+	}
+}
+
+self.hash :: fun(&self) -> u64 {
+	h : u64 = 0xcbf29ce484222325;
+
+	for i in 0usize..self.len {
+		h = h ^ (self.raw[i] as u64);
+		h = h + (h << 1) + (h << 4) + (h << 5) + (h << 7) + (h << 8) + (h << 40);
+	}
+
+	h
+}
+
+self.reserve :: fun(&self, need: usize) {
+	min :: self.len + need + 1;
+
+	if min > self.cap {
+		new_cap := self.cap * 2;
+
+		for new_cap < min {
+			new_cap *= 2;
+		}
+
+		self.raw = std.c.realloc(self.raw as &u8, new_cap);
+		self.cap = new_cap;
+	}
+}
+
+self.push :: fun(&self, c: u8) {
+	self.reserve(1);
+	self.raw[self.len] = c;
+	self.len += 1;
+}
+
+self.pushBytes :: fun(&self, src: &u8, n: usize) {
+	self.reserve(n);
+	
+	for i in 0usize..n {
+		self.raw[self.len + i] = src[i];
+	}
+
+	self.len += n;
+}
+
+test("string: initialization and deinitialization") :: fun() {
+	s := String.init();
+	assert(s.len == 0);
+	assert(s.cap == 8);
+	
+	s.deinit();
+	assert(s.len == 0);
+	assert(s.cap == 0);
+}
+
+test("string: push single character") :: fun() {
+	s := String.init();
+	
+	s.push('a');
+	assert(s.len == 1);
+	assert(s.char_at(0) == 'a');
+	
+	s.push('b');
+	assert(s.len == 2);
+	assert(s.char_at(1) == 'b');
+	
+	s.deinit();
+}
+
+test("string: push bytes and growth reservation") :: fun() {
+	s := String.init();
+	
+	s.push_bytes("hello", 5);
+	assert(s.len == 5);
+	assert(s.char_at(0) == 'h');
+	assert(s.char_at(4) == 'o');
+	
+	s.push_bytes(" world!", 7);
+	assert(s.len == 12);
+	assert(s.cap > 8);
+	
+	s.deinit();
+}
+
+test("string: equality checks") :: fun() {
+	s1 := String.init();
+	s2 := String.init();
+	
+	s1.push_bytes("test", 4);
+	s2.push_bytes("test", 4);
+	
+	assert(s1.eq(&s2) == true);
+	
+	assert(s1.eq_cstr("test") == true);
+	assert(s1.eq_cstr("different") == false);
+	
+	s2.push('s');
+	assert(s1.eq(&s2) == false);
+	
+	s1.deinit();
+	s2.deinit();
+}
+
+test("string: c-string compatibility") :: fun() {
+	s := String.init();
+	s.push_bytes("open", 4);
+	
+	cstr := s.as_cstr();
+	assert(Std.C.strlen(cstr) == 4);
+	
+	s.deinit();
+}
+
+test("string: hashing consistency") :: fun() {
+	s1 := String.init();
+	s2 := String.init();
+	
+	s1.push_bytes("hash_me", 7);
+	s2.push_bytes("hash_me", 7);
+	
+	h1 := s1.hash();
+	h2 := s2.hash();
+	
+	assert(h1 == h2);
+	
+	s2.push('1');
+	assert(s1.hash() != s2.hash());
+	
+	s1.deinit();
+	s2.deinit();
+}

@@ -1,0 +1,46 @@
+// ----------------------------------------------------------------------------
+// Optional - a typesafe container that may or may not contain a value
+// ----------------------------------------------------------------------------
+
+local std :: import("$std")
+
+self :: comptime fun(T: type) -> type {
+	union(enum) {
+		Some: T,
+		None
+	}
+}
+
+self(any(T)).isSome :: fun(&const self) -> bool {
+	if self == {
+		case Some(T): true,
+		case None: false
+	}
+}
+
+self(any(T)).isNone :: fun(&const self) -> bool {
+	if self == {
+		case Some(T): false,
+		case None: true
+	}
+}
+
+self(any(T)).unwrap :: fun(&const self) -> T {
+	if self == {
+		case Some(T): T,
+		case None: std.panic("unwrap none")
+	}
+}
+
+// Optional(any(T)).unwarp_or :: fun(&const self) {}
+// Optional(any(T)).unwarp_or_else :: fun() {}
+// Optional(any(T)).map :: fun() {}
+// Optional(any(T)).and_then :: fun() {}
+
+test("optional: testing") :: fun() {
+	name :: Optional(&u8).Some("Ali");
+	empty :: Optional(&u8).None;
+
+	assert(name.is_some() == true);
+	assert(empty.is_none() == true);
+}

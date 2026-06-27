@@ -1,0 +1,17 @@
+// --------------------------------------------------------------------------------
+// Result - a typesafe container representing either a success value or an failure
+// --------------------------------------------------------------------------------
+
+self :: comptime fun(S: type, F: type) -> type {
+	union(enum) {
+		Success: S,
+		Failure: F
+	}
+}
+
+self(any(S), any(F)).isSuccess :: fun(&self) -> bool {
+	if self == {
+		case .Success(result): true,
+		case .Failure(result): false,
+	}
+}

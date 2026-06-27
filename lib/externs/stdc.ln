@@ -1,0 +1,56 @@
+// ----------------------------------------------------------------------------
+// C standard-library bindings.
+// ----------------------------------------------------------------------------
+
+// -- stdio -------------------------------------------------------------------
+printf :: extern fun(format: &u8, ...) -> i32
+
+// -- process -----------------------------------------------------------------
+EXIT_FAILURE :: 1
+
+exit :: extern fun(status: i32)
+
+// -- memory ------------------------------------------------------------------
+malloc  :: extern fun(size: usize) -> &u8
+realloc :: extern fun(ptr: &u8, size: usize) -> &u8
+free    :: extern fun(ptr: &u8) -> void
+
+// -- string ------------------------------------------------------------------
+strlen :: extern fun(s: &u8) -> usize
+strcmp :: extern fun(str: &u8, str2: &u8) -> i32
+
+// -- errors ------------------------------------------------------------------
+ENOENT :: 2
+EACCES :: 13
+errno  :: extern(C, "__errno_location") fun() -> &i32
+
+// -- file I/O ----------------------------------------------------------------
+FileHandle :: &u8
+
+OpenMode :: enum(&u8) {
+	Read             : "r",
+	ReadBinary       : "rb",
+	Write            : "w",
+	WriteBinary      : "wb",
+	Append           : "a",
+	AppendBinary     : "ab",
+	ReadWrite        : "r+",
+	ReadWriteBinary  : "rb+",
+	WriteRead        : "w+",
+	WriteReadBinary  : "wb+",
+	AppendRead       : "a+",
+	AppendReadBinary : "ab+"
+}
+
+PointerPosition :: enum(i32) {
+	Set : 0,
+	Our : 1,
+	End : 2
+}
+
+stderr :: extern FileHandle
+fopen  :: extern fun(path: &u8, mode: OpenMode) -> FileHandle
+fread  :: extern fun(buffer: &u8, size: usize, count: usize, stream: FileHandle) -> i64
+fseek  :: extern fun(stream: FileHandle, offset: usize, position: PointerPosition) -> i32
+ftell  :: extern fun(stream: FileHandle) -> i64
+fclose :: extern fun(stream: FileHandle) -> i32

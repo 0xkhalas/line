@@ -1,0 +1,38 @@
+// ----------------------------------------------------------------------------
+// ascii — byte constants and character classifiers.
+// ----------------------------------------------------------------------------
+
+isDigit :: fun(c: u8) -> bool {
+	c >= '0' && c <= '9'
+}
+
+isHexDigit :: fun(c: u8) -> bool {
+	(c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+}
+
+isAlpha :: fun(c: u8) -> bool {
+	(c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+}
+
+isAlnum :: fun(c: u8) -> bool {
+	isAlpha(c) || isDigit(c)
+}
+
+isSpace :: fun(c: u8) -> bool {
+	c == ' ' || c == '\t' || c == '\r' || c == '\n'
+}
+
+test("testing") :: fun() {
+	assert(isDigit('9') == true)
+	assert(isDigit('A') == false)
+	assert(isDigit('c') == false)
+	assert(isHexDigit('9') == true)
+	assert(isHexDigit('A') == true)
+	assert(isHexDigit('H') == false)
+	assert(isAlpha('H') == true)
+	assert(isAlpha('a') == true)
+	assert(isAlpha('5') == false)
+	assert(isAlpha('_') == false)
+	assert(isSpace('a') == false)
+	assert(isSpace(' ') == true)
+}

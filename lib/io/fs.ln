@@ -1,0 +1,53 @@
+// ----------------------------------------------------------------------------
+// fs - file I/O over libc stdio.
+// ----------------------------------------------------------------------------
+
+local std :: import("$std")
+
+FileError :: union(enum) {
+	NotFound: &u8,
+	Permission: &u8,
+	ReadFailed: &u8,
+	Unknown
+}
+
+readFile :: fun(path: &u8) -> std.Result(std.String, FileError) {
+	out := std.String.init();
+
+	f :: std.c.fopen(path, std.c.OpenMode.ReadBinary)
+	defer std.c.fclose(f);
+
+	if f == null {
+		err_val :: std.c.errno().*;
+		if err_val == std.c.ENOENT { return .Failure(.NotFound(path)) }
+		if err_val == std.c.EACCES { return .Failure(.Permission(path)) }
+		return .Failure(.Unknown)
+	}
+
+	std.c.fseek(f, 0, std.c.PointerPosition.End);
+	size :: std.c.ftell(f) as i32;
+	std.c.fseek(f, 0, std.c.PointerPosition.Set)
+
+	if size < 0 {
+		return .Failure(.ReadFailed(path))
+	}
+
+	// Should Be Memory Handled Error here
+	out.reserve(size);
+	// Should Be ReadFailed Error here
+	read :: std.c.fread(out.raw, 1, size as i64, f) as usize;
+	out.len = read;
+
+	.Success(out)
+}
+
+test("testing") :: fun() {
+	resultData :: readFile("LICENSE.md");
+
+	assert(resultData.isSuccess() == true);
+
+	if .Success(src) :: resultData {
+		assert(src.len == 890);
+		assert(src.charAt(0) == 'z');
+	}
+}

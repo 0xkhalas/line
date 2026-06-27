@@ -1,0 +1,48 @@
+// ----------------------------------------------------------------------------
+// ArrayList - a growable, heap-backed array
+// ----------------------------------------------------------------------------
+
+local std :: import("$std")
+
+self :: comptime fun(T: type) -> type {
+	struct {
+		local items: &T,
+		local len: i32,
+		local cap: i32,
+	}
+}
+
+self(any(T)).init :: fun() -> Self {
+	Self(items: std.c.malloc(4 * std.builtin.sizeOf(T)) as &T, len: 0, cap: 4)
+}
+
+self(any).deinit :: fun(&self) {
+	std.c.free(self.items as &u8);
+	self.len = 0;
+	self.cap = 0;
+}
+
+self(any(T)).add :: fun(&self, item: T) {
+	if self.len == self.cap {
+		self.cap = self.cap * 2;
+		self.items = std.c.realloc(self.items as &u8, (self.cap * std.builtin.sizeOf(T)) as usize) as &T;
+	}
+
+	self.items[self.len] = item;
+	self.len += 1;
+}
+
+self(any(T)).remove :: fun(&self, index: i32) -> T {
+	removed :: self.items[index];
+
+	for i in index..(self.len - 1) {
+		self.items[i] = self.items[i + 1];
+	}
+
+	self.len -= 1;
+	removed
+}
+
+self(any(T)).view :: fun(&self) -> []T {
+	self.items[0..self.len]
+}

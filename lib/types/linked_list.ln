@@ -1,0 +1,129 @@
+// ----------------------------------------------------------------------------
+// LinkedList - a dynamic, non-contiguous sequence of node-based elements
+// ----------------------------------------------------------------------------
+
+local std :: import("$std")
+
+local LinkedListNode :: comptime fun(T: type) -> type {
+	struct {
+		value: T,
+		next:  *u8,
+	}
+}
+
+LinkedListIter :: comptime fun(T: type) -> type {
+	struct {
+		current: *LinkedListNode(T),
+	}
+}
+
+self :: comptime fun(T: type) -> type {
+	struct {
+		head:  *LinkedListNode(T),
+		tail:  *LinkedListNode(T),
+		len:   i32,
+	}
+}
+
+self(any).init :: fun() -> Self {
+	Self(head: null, tail: null, len: 0)
+}
+
+self(any(T)).deinit :: fun(&self) {
+	cur := self.head;
+
+	for cur != null {
+		next :: cur.next as *LinkedListNode(T);
+		std.c.free(cur as &u8);
+		cur = next as *LinkedListNode(T);
+	}
+
+	self.head = null;
+	self.tail = null;
+	self.len  = 0;
+}
+
+self(any(T)).pushBack :: fun(&self, value: T) {
+	node :: std.c.malloc(std.builtin.sizeof(LinkedListNode(T)) as i64) as *LinkedListNode(T);
+	node.value = value;
+	node.next  = null;
+
+	if self.tail == null {
+		self.head = node;
+		self.tail = node;
+	} else {
+		self.tail.next = node as *u8;
+		self.tail        = node;
+	}
+
+	self.len += 1;
+}
+
+self(any(T)).pushFront :: fun(&self, value: T) {
+	node :: std.c.malloc(std.builtin.sizeof(LinkedListNode(T)) as i64) as *LinkedListNode(T);
+	node.value = value;
+	node.next  = null;
+
+	if self.head == null {
+		self.head = node;
+		self.tail = node;
+	} else {
+		node.next = self.head as *u8;
+		self.head = node;
+	}
+
+	self.len += 1;
+}
+
+self(any(T)).popBack :: fun(&self) -> T {
+	value :: self.tail.value;
+
+	if self.len == 1 {
+		std.c.free(self.tail as &u8);
+
+		self.head = null;
+		self.tail = null;
+	} else {
+		cur := self.head;
+
+		for (cur.next as *LinkedListNode(T)) != self.tail {
+			cur = cur.next as *LinkedListNode(T);
+		}
+
+		std.c.free(self.tail as &u8);
+		cur.next = null;
+		self.tail  = cur;
+	}
+
+	self.len -= 1;
+	value
+}
+
+self(any(T)).get :: fun(&self, index: i32) -> &T {
+	if index < 0 || index >= self.len {
+		return null;
+	}
+
+	cur := self.head;
+
+	for i in 0..index {
+		cur = cur.next as *LinkedListNode(T);
+	}
+
+	&cur.value
+}
+
+self(any(T)).iter :: fun(&self) -> LinkedListIter(T) {
+	LinkedListIter(T)(current: self.head)
+}
+
+self(any(T)).next :: fun(&self) -> *T {
+	node := self.current;
+
+	if node == null {
+		return null;
+	}
+
+	self.current = node.next as *LinkedListNode(T);
+	&node.value
+}

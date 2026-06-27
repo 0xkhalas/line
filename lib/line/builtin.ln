@@ -1,0 +1,23 @@
+// ----------------------------------------------------------------------------
+// builtin — byte constants and character classifiers.
+// ----------------------------------------------------------------------------
+
+import         :: extern(Compiler) comptime fun(path: &u8) -> type
+sizeOf         :: extern(Compiler, "sizeof") comptime fun(T: type) -> i32
+typeOf         :: extern(Compiler, "typeof") comptime fun(x: any) -> type
+nameOf         :: extern(Compiler, "nameof") comptime fun(x: any) -> &u8
+os             :: extern(Compiler) comptime fun() -> &u8
+fieldType      :: extern(Compiler, "field_type") comptime fun(T: type, name: &u8) -> type
+elementType    :: extern(Compiler, "element_type") comptime fun(T: type) -> type
+hasFunction    :: extern(Compiler, "has_function") comptime fun(T: type, name: &u8) -> bool
+compilerError  :: extern(Compiler, "compiler_error") comptime fun(msg: &u8)
+test           :: extern(Compiler) fun(name: &u8)
+assert         :: extern(Compiler) fun(cond: bool)
+
+test("builtin: sizeOf") :: fun() {
+	assert(sizeOf(i8) == 1)
+	assert(sizeOf(i32) == 4)
+	assert(sizeOf(i64) == 8)
+	assert(sizeOf(f32) == 4)
+	assert(sizeOf(f64) == 8)
+}

@@ -1,0 +1,24 @@
+// ----------------------------------------------------------------------------
+// Alias Namespaces
+// ----------------------------------------------------------------------------
+c       :: import("std/externs/stdc.ln")
+fs      :: import("std/io/fs.ln")
+ascii   :: import("std/utils/ascii.ln")
+builtin :: import("std/line/builtin.ln")
+
+// ----------------------------------------------------------------------------
+// Alias Function
+// ----------------------------------------------------------------------------
+printf  :: c.printf
+matches :: import("std/utils/matches.ln");
+panic   :: import("std/utils/panic.ln");
+assert  :: import("std/utils/assert.ln");
+
+// ----------------------------------------------------------------------------
+// Alias Structures
+// ----------------------------------------------------------------------------
+Optional   :: import("std/types/optional.ln")
+Result     :: import("std/types/result.ln")
+String     :: import("std/types/string.ln")
+ArrayList  :: import("std/types/array_list.ln")
+LinkedList :: import("std/types/linked_list.ln")
